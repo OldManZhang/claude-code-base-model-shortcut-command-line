@@ -1,0 +1,248 @@
+#!/bin/bash
+
+# cc - Claude Command Line Manager
+# A tool to switch between different LLM providers
+
+set -e
+
+# Configuration directory - always use ~/.cc/configs in production
+CONFIGS_DIR="$HOME/.cc/configs"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+# Extract provider name from env.* file
+get_provider_name() {
+    basename "$1" | sed 's/^env\.//'
+}
+
+# List all available configs
+list_configs() {
+    print_info "Available configurations:"
+    echo
+
+    # Print environment variables and config path info
+    echo "Environment variables:"
+    echo "  CC_DEFAULT_PROVIDER=${CC_DEFAULT_PROVIDER:-<not set>}"
+    echo "  LLM_PROVIDER=${LLM_PROVIDER:-<not set>}"
+    echo
+    echo "Configuration directory: $CONFIGS_DIR"
+    echo
+
+    local count=0
+    local default_provider="${CC_DEFAULT_PROVIDER:-}"
+
+    for config in "$CONFIGS_DIR"/env.*; do
+        if [ -f "$config" ]; then
+            local name=$(get_provider_name "$config")
+            local current_marker=""
+            local default_marker=""
+
+            # Check if current configuration matches
+            if [ -n "$LLM_PROVIDER" ]; then
+                # Support both old format (no prefix) and new format
+                if [ "$LLM_PROVIDER" = "$name" ] || [ -f "$CONFIGS_DIR/env.$LLM_PROVIDER" ]; then
+                    current_marker=" $(print_success "[current]")"
+                fi
+            fi
+
+            # Mark default provider
+            if [ -n "$default_provider" ] && [ "$name" = "$default_provider" ]; then
+                default_marker=" $(print_info "[default]")"
+            elif [ "$name" = "kimi" ] && [ -z "$default_provider" ]; then
+                default_marker=" $(print_info "[default]")"
+            fi
+
+            echo -e "  ${GREEN}$name${NC}$current_marker$default_marker"
+            count=$((count + 1))
+        fi
+    done
+
+    if [ $count -eq 0 ]; then
+        print_warning "No configurations found in $CONFIGS_DIR/env.*"
+    fi
+}
+
+# Show current configuration
+show_current() {
+    print_info "Current configuration status:"
+    echo
+    echo "Environment variables:"
+    echo "  CC_DEFAULT_PROVIDER=${CC_DEFAULT_PROVIDER:-<not set>}"
+    echo "  LLM_PROVIDER=${LLM_PROVIDER:-<not set>}"
+    echo
+    echo "Configuration directory: $CONFIGS_DIR"
+    echo
+
+    if [ -n "$LLM_PROVIDER" ]; then
+        print_info "Active provider: $LLM_PROVIDER"
+        echo
+        local config_file="$CONFIGS_DIR/env.$LLM_PROVIDER"
+        if [ -f "$config_file" ]; then
+            echo "Configuration file: $config_file"
+            echo
+            echo "Environment variables from config:"
+            grep "^export" "$config_file" | sed 's/^/  /'
+        else
+            print_warning "Configuration file for $LLM_PROVIDER not found at: $config_file"
+        fi
+    else
+        print_warning "No configuration is currently active"
+    fi
+}
+
+# Load a configuration
+load_config() {
+    local provider="$1"
+
+    if [ -z "$provider" ]; then
+        print_error "Provider name is required"
+        echo
+        print_info "Usage: cc <provider>"
+        echo
+        list_configs
+        exit 1
+    fi
+
+    local config_file="$CONFIGS_DIR/env.$provider"
+
+    if [ ! -f "$config_file" ]; then
+        print_error "Configuration for '$provider' not found"
+        echo
+        print_info "Available providers:"
+        list_configs
+        exit 1
+    fi
+
+    print_info "Loading configuration for $provider..."
+    echo
+
+    # Source the config to set environment variables in current shell
+    source "$config_file"
+
+    print_success "Configuration loaded for $provider"
+    echo
+    print_info "Environment variables set:"
+
+    # Show which environment variables were set
+    grep "^export" "$config_file" | sed 's/^export /  /' | while read -r line; do
+        local var_name=$(echo "$line" | cut -d= -f1)
+        local var_value=$(eval echo "\$$var_name")
+        if [ -n "$var_value" ]; then
+            # Mask the actual value for security
+            echo -e "  ${GREEN}$var_name${NC}=****"
+        fi
+    done
+
+    echo
+    print_success "Now you can use Claude with $provider configuration"
+    echo
+
+    # Check if claude command exists
+    if command -v claude &> /dev/null; then
+        print_info "Starting Claude CLI..."
+        echo
+        # Execute claude with any additional arguments
+        claude "${@:2}"
+    else
+        print_warning "Claude CLI not found in PATH"
+        print_info "Make sure Claude CLI is installed and in your PATH"
+        print_info "You can download it from: https://claude.ai/claude-cli"
+    fi
+}
+
+# Load default configuration
+load_default_config() {
+    # First check CC_DEFAULT_PROVIDER environment variable
+    local default_provider="${CC_DEFAULT_PROVIDER:-}"
+
+    # If not set, ask user to choose
+    if [ -z "$default_provider" ]; then
+        print_warning "No default provider is set"
+        echo
+        print_info "Please specify a provider:"
+        echo
+        list_configs
+        exit 1
+    else
+        print_info "Using default provider from CC_DEFAULT_PROVIDER: $default_provider"
+        echo
+    fi
+
+    load_config "$default_provider"
+}
+
+# Show usage
+show_usage() {
+    echo "Usage: cc <command> [options]"
+    echo
+    echo "Commands:"
+    echo "  <provider>          Switch to specified provider and start Claude"
+    echo "  (no args)           Load default provider and start Claude"
+    echo "  list, ls            List all available configurations"
+    echo "  current             Show current configuration"
+    echo "  help, -h, --help    Show this help message"
+    echo
+    echo "Configuration:"
+    echo "  Config files follow env.MODEL_NAME format in $CONFIGS_DIR"
+    echo "  Set CC_DEFAULT_PROVIDER env var to change default provider"
+    echo
+    echo "Examples:"
+    echo "  cc                  Use default provider (kimi or CC_DEFAULT_PROVIDER)"
+    echo "  cc kimi             Switch to kimi configuration"
+    echo "  cc glm              Switch to glm configuration"
+    echo "  cc list             List all providers"
+    echo "  cc current          Show current provider"
+}
+
+# Main command dispatcher
+main() {
+    local command="${1:-}"
+
+    case "$command" in
+        help|-h|--help)
+            show_usage
+            exit 0
+            ;;
+        list|ls)
+            list_configs
+            exit 0
+            ;;
+        current)
+            show_current
+            exit 0
+            ;;
+        "")
+            # No argument provided, load default config
+            load_default_config
+            exit $?
+            ;;
+        *)
+            load_config "$@"
+            exit $?
+            ;;
+    esac
+}
+
+main "$@"
