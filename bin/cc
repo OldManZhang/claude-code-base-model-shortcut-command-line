@@ -485,16 +485,11 @@ load_default_config() {
 show_usage() {
     echo "Usage: cc [provider] [arguments...]"
     echo
-    echo "Arguments:"
-    echo "  provider            LLM provider to use (kimi, glm, openai, etc.)"
-    echo "                     Or model alias (gpt4, claude-sonnet, etc.)"
-    echo "                     Or provider:model (e.g., kimi:gpt-4o)"
-    echo "  arguments           Additional arguments passed to claude CLI"
-    echo
     echo "Commands:"
-    echo "  <provider>          Switch to specified provider"
-    echo "  <alias>            Use model alias"
-    echo "  <provider>:<model> Switch to provider with specific model"
+    echo "  <provider>          Use a provider from config (e.g., kimi, glm, openai)"
+    echo "  <alias>            Use a model alias (e.g., gpt4, minimax-m2.5)"
+    echo "  <provider>:<model> Use specific model (e.g., kimi:gpt-4o)"
+    echo "  custom             Use existing ANTHROPIC_BASE_URL & ANTHROPIC_AUTH_TOKEN env vars"
     echo "  list, ls           List all available configurations"
     echo "  current            Show current configuration"
     echo "  help, -h, --help   Show this help message"
@@ -503,11 +498,17 @@ show_usage() {
     echo "  JSON config: $MODELS_CONFIG"
     echo "  Legacy: $CONFIGS_DIR/env.*"
     echo
+    echo "Quick Start (using existing env vars):"
+    echo "  export ANTHROPIC_BASE_URL=https://api.example.com"
+    echo "  export ANTHROPIC_AUTH_TOKEN=your-api-key"
+    echo "  cc custom            # Use the env vars above"
+    echo
     echo "Examples:"
     echo "  cc                  Use default provider"
     echo "  cc kimi             Switch to kimi"
     echo "  cc gpt4             Use gpt4 alias"
     echo "  cc minimax-m2.5     Use minimax-m2.5 alias"
+    echo "  cc custom           Use existing env vars"
     echo "  cc list             List all providers"
 }
 
@@ -528,6 +529,38 @@ main() {
             ;;
         current)
             show_current
+            exit 0
+            ;;
+        custom)
+            shift
+            # Use existing environment variables
+            if [ -z "$ANTHROPIC_BASE_URL" ] || [ -z "$ANTHROPIC_AUTH_TOKEN" ]; then
+                print_error "ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN must be set"
+                echo
+                echo "Quick setup:"
+                echo "  export ANTHROPIC_BASE_URL=https://api.example.com"
+                echo "  export ANTHROPIC_AUTH_TOKEN=your-api-key"
+                echo "  cc custom"
+                exit 1
+            fi
+
+            export ANTHROPIC_BASE_URL="$ANTHROPIC_BASE_URL"
+            export ANTHROPIC_AUTH_TOKEN="$ANTHROPIC_AUTH_TOKEN"
+            if [ -n "$ANTHROPIC_MODEL" ]; then
+                export ANTHROPIC_MODEL="$ANTHROPIC_MODEL"
+            fi
+
+            print_success "Using custom configuration"
+            echo "  BASE_URL: $ANTHROPIC_BASE_URL"
+            [ -n "$ANTHROPIC_MODEL" ] && echo "  MODEL: $ANTHROPIC_MODEL"
+            echo
+
+            if command -v claude &> /dev/null; then
+                print_info "Starting Claude CLI..."
+                claude "$@"
+            else
+                print_error "Claude CLI not found"
+            fi
             exit 0
             ;;
         "")
