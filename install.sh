@@ -37,6 +37,58 @@ if [ ! -f "$CONFIG_DIR/env.kimi" ] && [ ! -f "$CONFIG_DIR/env.glm" ] && [ ! -f "
     fi
 fi
 
+# Migrate old env.* configs to new models.config format
+MODELS_CONFIG="${HOME}/.cc/models.config"
+if [ -d "$CONFIG_DIR" ] && [ ! -f "$MODELS_CONFIG" ]; then
+    # Check if there are old config files
+    old_configs=("$CONFIG_DIR"/env.*)
+    if [ -f "${old_configs[0]}" ]; then
+        echo "Migrating old configs to new models.config format..."
+        echo
+
+        {
+            echo "# Migrated from old env.* format"
+            echo "# Edit this file to update your configuration"
+            echo
+            echo "providers {"
+
+            for config in "$CONFIG_DIR"/env.*; do
+                if [ -f "$config" ]; then
+                    provider=$(basename "$config" | sed 's/^env\.//')
+
+                    # Extract values from env file
+                    base_url=$(grep "^export ANTHROPIC_BASE_URL=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
+                    api_key=$(grep "^export ANTHROPIC_AUTH_TOKEN=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
+                    model=$(grep "^export ANTHROPIC_MODEL=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
+
+                    if [ -n "$base_url" ] && [ -n "$api_key" ]; then
+                        echo "  $provider {"
+                        echo "    base_url=\"$base_url\""
+                        echo "    api_key=\"$api_key\""
+                        if [ -n "$model" ]; then
+                            echo "    default_model=\"$model\""
+                        fi
+                        echo "  }"
+                        echo
+                        echo "  # Migrated from $config"
+                        echo
+                    fi
+                fi
+            done
+
+            echo "}"
+            echo
+            echo "default {"
+            echo "  provider=\"kimi\""
+            echo "}"
+        } > "$MODELS_CONFIG"
+
+        echo "Migration complete! Created $MODELS_CONFIG"
+        echo "Your old configs are kept in $CONFIG_DIR/"
+        echo
+    fi
+fi
+
 # Add to PATH if not already in PATH
 SHELL_RC=""
 if [ -n "$ZSH_VERSION" ]; then
