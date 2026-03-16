@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # cc install script
-# Usage: curl -fsSL <url>/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-shortcut-command-line/main/install.sh | sh
 
 set -e
 

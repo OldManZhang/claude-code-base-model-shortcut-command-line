@@ -12,12 +12,24 @@
 
 ## 安装
 
-### 快速安装
+### 一键安装 (推荐)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-shortcut-command-line/main/install.sh | sh
+```
+
+安装完成后，记得运行以下命令使 PATH 生效：
+
+```bash
+source ~/.zshrc  # 或 ~/.bashrc
+```
+
+### 手动安装
 
 ```bash
 # 克隆或下载项目后
-git clone <repository-url>
-cd cc-command-line
+git clone https://github.com/OldManZhang/claude-code-base-model-shortcut-command-line.git
+cd claude-code-base-model-shortcut-command-line
 
 # 安装到系统
 cp bin/cc ~/.local/bin/
