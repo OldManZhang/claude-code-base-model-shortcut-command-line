@@ -7,7 +7,34 @@ set -e
 
 INSTALL_DIR="${HOME}/.local/bin"
 CONFIG_DIR="${HOME}/.cc/configs"
-CC_REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_URL="https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-shortcut-command-line/main"
+
+# Detect if running via pipe (curl | sh)
+if [ -t 0 ]; then
+    # Running directly (not piped), use script's directory
+    CC_REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+else
+    # Running via pipe, download files to temp directory
+    echo "Running via pipe, downloading files..."
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf '$TEMP_DIR'" EXIT
+
+    mkdir -p "$TEMP_DIR/bin"
+    mkdir -p "$TEMP_DIR/configs"
+
+    echo "Downloading cc script..."
+    curl -fsSL "$REPO_URL/bin/cc" -o "$TEMP_DIR/bin/cc"
+    chmod +x "$TEMP_DIR/bin/cc"
+
+    echo "Downloading sample configs..."
+    for config in env.kimi env.glm env.openai env.anthropic env.minimax; do
+        curl -fsSL "$REPO_URL/configs/$config" -o "$TEMP_DIR/configs/$config" 2>/dev/null || true
+    done
+
+    curl -fsSL "$REPO_URL/env.sample" -o "$TEMP_DIR/env.sample" 2>/dev/null || true
+
+    CC_REPO_DIR="$TEMP_DIR"
+fi
 
 echo "Installing cc..."
 
