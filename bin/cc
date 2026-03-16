@@ -98,6 +98,18 @@ get_model_config() {
     fi
 }
 
+# Get extra environment variables from model config (fields other than provider and id)
+get_model_extra_env_vars() {
+    local model="$1"
+
+    if [ ! -f "$MODELS_CONFIG" ]; then
+        return 1
+    fi
+
+    # Get all keys in the model that start with ANTHROPIC_
+    jq -r ".models.${model} | to_entries | .[] | select(.key | startswith(\"ANTHROPIC_\")) | \"\(.key)=\(.value)\"" "$MODELS_CONFIG" 2>/dev/null
+}
+
 # Get default from models.config
 get_default() {
     if [ ! -f "$MODELS_CONFIG" ]; then
@@ -362,9 +374,15 @@ load_config() {
     fi
 
     # Check if input is an alias first
+    # Note: Check models first to support model-level extra env vars
     local is_alias=false
-    if has_models_config && get_config_entry "$input" 2>/dev/null | grep -q "model"; then
-        is_alias=true
+    if has_models_config; then
+        # Check if it's a model (check models before providers to support extra env vars)
+        local model_result
+        model_result=$(jq -r ".models[\"$input\"]" "$MODELS_CONFIG" 2>/dev/null)
+        if [ -n "$model_result" ] && [ "$model_result" != "null" ]; then
+            is_alias=true
+        fi
     fi
 
     local provider="$input"
@@ -419,6 +437,15 @@ load_config() {
         export ANTHROPIC_AUTH_TOKEN="$api_key"
         if [ -n "$model" ]; then
             export ANTHROPIC_MODEL="$model"
+        fi
+
+        # Export extra environment variables from model config
+        if [ "$is_alias" = true ]; then
+            while IFS='=' read -r key value; do
+                if [ -n "$key" ]; then
+                    export "$key"="$value"
+                fi
+            done <<< "$(get_model_extra_env_vars "$input")"
         fi
 
         print_success "Configuration loaded for $provider"
