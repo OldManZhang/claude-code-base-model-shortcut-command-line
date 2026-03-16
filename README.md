@@ -164,6 +164,15 @@ cc
 - 建议在使用前先编辑配置文件添加您的真实 API 密钥
 - 默认提供商可通过 `CC_DEFAULT_PROVIDER` 环境变量自定义
 
+## Changelog
+
+### v0.2.0 (2025-03-16)
+
+- **新增**: 支持将命令行参数传递给 claude CLI
+  - `cc kimi --version` - 切换到 kimi 并传递参数
+  - `cc --print` - 使用默认 provider 并传递参数
+  - `cc glm --print --verbose` - 传递多个参数
+
 ## 许可证
 
 MIT

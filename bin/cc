@@ -37,6 +37,12 @@ get_provider_name() {
     basename "$1" | sed 's/^env\.//'
 }
 
+# Check if a provider exists
+provider_exists() {
+    local provider="$1"
+    [ -f "$CONFIGS_DIR/env.$provider" ]
+}
+
 # List all available configs
 list_configs() {
     print_info "Available configurations:"
@@ -174,6 +180,9 @@ load_config() {
 
 # Load default configuration
 load_default_config() {
+    # Collect all arguments to pass through to claude
+    local args=("$@")
+
     # First check CC_DEFAULT_PROVIDER environment variable
     local default_provider="${CC_DEFAULT_PROVIDER:-}"
 
@@ -190,19 +199,25 @@ load_default_config() {
         echo
     fi
 
-    load_config "$default_provider"
+    load_config "$default_provider" "${args[@]}"
 }
 
 # Show usage
 show_usage() {
-    echo "Usage: cc <command> [options]"
+    echo "Usage: cc [provider] [arguments...]"
+    echo
+    echo "Arguments:"
+    echo "  provider            LLM provider to use (kimi, glm, openai, anthropic, etc.)"
+    echo "  arguments           Additional arguments passed to claude CLI"
     echo
     echo "Commands:"
     echo "  <provider>          Switch to specified provider and start Claude"
-    echo "  (no args)           Load default provider and start Claude"
-    echo "  list, ls            List all available configurations"
-    echo "  current             Show current configuration"
-    echo "  help, -h, --help    Show this help message"
+    echo "  <provider> <args>   Switch to provider and pass args to claude"
+    echo "  <args>             Use default provider and pass args to claude"
+    echo "  (no args)          Load default provider and start Claude"
+    echo "  list, ls           List all available configurations"
+    echo "  current            Show current configuration"
+    echo "  help, -h, --help   Show this help message"
     echo
     echo "Configuration:"
     echo "  Config files follow env.MODEL_NAME format in $CONFIGS_DIR"
@@ -212,6 +227,9 @@ show_usage() {
     echo "  cc                  Use default provider (kimi or CC_DEFAULT_PROVIDER)"
     echo "  cc kimi             Switch to kimi configuration"
     echo "  cc glm              Switch to glm configuration"
+    echo "  cc kimi --print     Switch to kimi and pass --print to claude"
+    echo "  cc --print         Use default provider and pass --print to claude"
+    echo "  cc --version        Check claude version"
     echo "  cc list             List all providers"
     echo "  cc current          Show current provider"
 }
@@ -239,7 +257,14 @@ main() {
             exit $?
             ;;
         *)
-            load_config "$@"
+            # Check if first argument is a valid provider
+            if provider_exists "$command"; then
+                # First arg is a provider, pass all args to load_config
+                load_config "$@"
+            else
+                # First arg is not a valid provider, use default config and pass all args
+                load_default_config "$@"
+            fi
             exit $?
             ;;
     esac
