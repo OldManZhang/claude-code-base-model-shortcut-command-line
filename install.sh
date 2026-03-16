@@ -135,10 +135,10 @@ if [ -d "$CONFIG_DIR" ] && [ ! -f "$MODELS_CONFIG" ]; then
     if [ -f "${old_configs[0]}" ]; then
         doing "迁移旧配置到新格式"
         {
-            printf "# Migrated from old env.* format\n"
-            printf "# Edit this file to update your configuration\n\n"
-            printf "providers {\n"
+            printf "{\n"
+            printf "  \"providers\": {\n"
 
+            first_provider=true
             for config in "$CONFIG_DIR"/env.*; do
                 if [ -f "$config" ]; then
                     provider=$(basename "$config" | sed 's/^env\.//')
@@ -147,21 +147,30 @@ if [ -d "$CONFIG_DIR" ] && [ ! -f "$MODELS_CONFIG" ]; then
                     model=$(grep "^export ANTHROPIC_MODEL=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
 
                     if [ -n "$base_url" ] && [ -n "$api_key" ]; then
-                        printf "  %s {\n" "$provider"
-                        printf "    base_url=\"%s\"\n" "$base_url"
-                        printf "    api_key=\"%s\"\n" "$api_key"
-                        if [ -n "$model" ]; then
-                            printf "    default_model=\"%s\"\n" "$model"
+                        if [ "$first_provider" = true ]; then
+                            first_provider=false
+                        else
+                            printf ",\n"
                         fi
-                        printf "  }\n\n"
-                        printf "  # Migrated from %s\n\n" "$config"
+                        printf "    \"%s\": {\n" "$provider"
+                        printf "      \"base_url\": \"%s\",\n" "$base_url"
+                        printf "      \"api_key\": \"%s\"" "$api_key"
+                        if [ -n "$model" ]; then
+                            printf ",\n"
+                            printf "      \"default_model\": \"%s\"\n" "$model"
+                        else
+                            printf "\n"
+                        fi
+                        printf "    }"
                     fi
                 fi
             done
 
-            printf "}\n\n"
-            printf "default {\n"
-            printf "  provider=\"kimi\"\n"
+            printf "\n"
+            printf "  },\n"
+            printf "  \"default\": {\n"
+            printf "    \"provider\": \"kimi\"\n"
+            printf "  }\n"
             printf "}\n"
         } > "$MODELS_CONFIG"
         done_msg "已创建: $MODELS_CONFIG"

@@ -1,6 +1,3 @@
-# cc models.config example
-# Copy this file to ~/.cc/models.config and edit with your configuration
-
 {
   "providers": {
     "kimi": {
