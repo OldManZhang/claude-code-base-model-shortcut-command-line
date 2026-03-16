@@ -79,7 +79,7 @@ cc current
 # 使用默认配置启动 Claude（会加载默认 provider 并启动）
 cc
 
-# 切换到指定提供商并启动 Claude
+# 切换到别名对应的模型
 cc kimi
 cc openai
 cc glm
@@ -118,8 +118,7 @@ cc glm --print --verbose
   "providers": {
     "kimi": {
       "base_url": "https://api.kimi.com/coding/",
-      "api_key": "your-kimi-api-key",
-      "default_model": "kimi-for-coding"
+      "api_key": "your-kimi-api-key"
     },
     "glm": {
       "base_url": "https://open.bigmodel.cn/api/anthropic",
@@ -131,8 +130,7 @@ cc glm --print --verbose
     },
     "minimax": {
       "base_url": "https://api.minimaxi.com/anthropic",
-      "api_key": "your-minimax-api-key",
-      "default_model": "MiniMax-M2.5"
+      "api_key": "your-minimax-api-key"
     }
   },
   "models": {
@@ -159,7 +157,6 @@ cc glm --print --verbose
 - `providers` - 定义 API 提供商，每个 provider 包含：
   - `base_url`: API 端点地址
   - `api_key`: API 密钥
-  - `default_model`: 可选，默认使用的模型
 - `models` - 定义模型别名，方便使用
   - `provider`: 对应的 provider 名称
   - `id`: 具体模型 ID
