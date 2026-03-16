@@ -107,7 +107,7 @@ cc glm --print --verbose
 
 ### 配置文件位置
 
-配置文件位于 `~/.cc/models.config`（推荐）或 `~/.cc/configs/env.*`（兼容旧版本）。
+配置文件位于 `~/.cc/models.config`。
 
 ### models.config 格式
 
@@ -256,8 +256,7 @@ cc current
 
 ### Q: 配置文件在哪里？
 
-- 推荐: `~/.cc/models.config`
-- 兼容旧版: `~/.cc/configs/env.*`
+- 配置文件: `~/.cc/models.config`
 
 ### Q: 可以同时使用多个配置吗？
 
