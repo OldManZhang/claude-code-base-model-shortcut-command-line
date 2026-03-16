@@ -43,39 +43,54 @@ has_models_config() {
     [ -f "$MODELS_CONFIG" ]
 }
 
-# Parse models.config and get provider config
+# Parse a value from config (handles both "value" and { key: value } formats)
+parse_config_value() {
+    local line="$1"
+    local key="$2"
+
+    # Check for simple key = "value" or key = value
+    if [[ "$line" =~ ^${key}[[:space:]]*=[[:space:]]*\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    return 1
+}
+
+# Get provider config from models.config
+# New format: provider_name = { base_url: "...", api_key: "..." }
 get_provider_config() {
     local provider="$1"
-    local section="$2"  # base_url, api_key, default_model
+    local field="$2"  # base_url, api_key
 
     if [ ! -f "$MODELS_CONFIG" ]; then
         return 1
     fi
 
-    # Extract provider block - find lines between provider name { and next }
-    local in_provider=0
-    local result=""
+    local in_block=0
 
     while IFS= read -r line; do
-        # Remove leading/trailing whitespace
         line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-        # Check for provider start
-        if [[ "$line" =~ ^${provider}[[:space:]]*\{$ ]]; then
-            in_provider=1
+        # Skip comments and empty lines
+        [ -z "$line" ] && continue
+        [[ "$line" =~ ^# ]] && continue
+
+        # Check for block start: key = {
+        if [[ "$line" =~ ^${provider}[[:space:]]*=\ *\{[[:space:]]*$ ]]; then
+            in_block=1
             continue
         fi
 
-        # Check for end of provider block
-        if [ "$in_provider" -eq 1 ] && [ "$line" = "}" ]; then
+        # Check for block end
+        if [ "$in_block" -eq 1 ] && [ "$line" = "}" ]; then
             break
         fi
 
-        # Look for the requested field
-        if [ "$in_provider" -eq 1 ]; then
-            if [[ "$line" =~ ^${section}[[:space:]]*=[[:space:]]*\"?([^\"]+)\"? ]]; then
-                result="${BASH_REMATCH[1]}"
-                echo "$result"
+        # Parse field inside block
+        if [ "$in_block" -eq 1 ]; then
+            if [[ "$line" =~ ^${field}[[:space:]]*:[[:space:]]*\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
+                echo "${BASH_REMATCH[1]}"
                 return 0
             fi
         fi
@@ -84,85 +99,112 @@ get_provider_config() {
     return 1
 }
 
-# Get model config from models.config
+# Check if a name is defined in config (either provider or model/alias)
+get_config_entry() {
+    local name="$1"
+
+    if [ ! -f "$MODELS_CONFIG" ]; then
+        return 1
+    fi
+
+    while IFS= read -r line; do
+        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+        [ -z "$line" ] && continue
+        [[ "$line" =~ ^# ]] && continue
+
+        # Match key = { or key = "value" or key = value
+        if [[ "$line" =~ ^${name}[[:space:]]*=\ *\{ ]]; then
+            # It's a block definition
+            echo "block"
+            return 0
+        elif [[ "$line" =~ ^${name}[[:space:]]*=\ *\"?[^\"{}]+\"?[[:space:]]*$ ]]; then
+            # It's a simple value (could be alias or default)
+            echo "value"
+            return 0
+        fi
+    done < "$MODELS_CONFIG"
+
+    return 1
+}
+
+# Resolve alias to final value
+resolve_alias() {
+    local name="$1"
+    local max_depth=10
+    local depth=0
+
+    while [ $depth -lt $max_depth ]; do
+        local entry_type
+        entry_type=$(get_config_entry "$name") || break
+
+        if [ "$entry_type" = "value" ]; then
+            # Get the value
+            while IFS= read -r line; do
+                line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                [ -z "$line" ] && continue
+                [[ "$line" =~ ^# ]] && continue
+
+                if [[ "$line" =~ ^${name}[[:space:]]*=\ *\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
+                    local value="${BASH_REMATCH[1]}"
+                    # Check if it's another alias
+                    if get_config_entry "$value" &>/dev/null; then
+                        name="$value"
+                        depth=$((depth + 1))
+                        continue 2
+                    else
+                        echo "$value"
+                        return 0
+                    fi
+                fi
+            done < "$MODELS_CONFIG"
+            break
+        else
+            # It's a block, return the name itself
+            echo "$name"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Get model/alias config from models.config
+# New format: alias = { provider: "...", id: "..." }
 get_model_config() {
-    local model="$1"
-    local field="$2"  # provider, model
+    local alias="$1"
+    local field="$2"  # provider, id
 
-    if [ ! -f "$MODELS_CONFIG" ]; then
-        return 1
+    # First resolve the alias
+    local resolved
+    resolved=$(resolve_alias "$alias") || return 1
+
+    # If resolved is different, it means it's an alias chain
+    if [ "$resolved" != "$alias" ]; then
+        # Continue resolving
+        resolved=$(resolve_alias "$resolved") || return 1
     fi
 
-    local in_models=0
-    local in_model=0
+    # Now get the config for the resolved name
+    local in_block=0
 
     while IFS= read -r line; do
         line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-        # Enter models section
-        if [[ "$line" =~ ^models[[:space:]]*\{$ ]]; then
-            in_models=1
+        [ -z "$line" ] && continue
+        [[ "$line" =~ ^# ]] && continue
+
+        if [[ "$line" =~ ^${resolved}[[:space:]]*=\ *\{[[:space:]]*$ ]]; then
+            in_block=1
             continue
         fi
 
-        # Exit models section
-        if [ "$in_models" -eq 1 ] && [ "$line" = "}" ]; then
+        if [ "$in_block" -eq 1 ] && [ "$line" = "}" ]; then
             break
         fi
 
-        # Look for model definition
-        if [ "$in_models" -eq 1 ]; then
-            # Check for alias (model=target)
-            if [[ "$line" =~ ^${model}[[:space:]]*=[[:space:]]*(.+)$ ]]; then
-                local target="${BASH_REMATCH[1]}"
-                # Resolve alias recursively
-                get_model_config "$target" "$field"
-                return $?
-            fi
-
-            # Check for direct model definition
-            if [[ "$line" =~ ^${model}[[:space:]]*\{$ ]]; then
-                in_model=1
-                continue
-            fi
-
-            # Look for field in model block
-            if [ "$in_model" -eq 1 ]; then
-                if [ "$line" = "}" ]; then
-                    in_model=0
-                    continue
-                fi
-                if [[ "$line" =~ ^${field}[[:space:]]*=[[:space:]]*\"?([^\"]+)\"? ]]; then
-                    echo "${BASH_REMATCH[1]}"
-                    return 0
-                fi
-            fi
-        fi
-    done < "$MODELS_CONFIG"
-
-    return 1
-}
-
-# Get default provider from models.config
-get_default_provider() {
-    if [ ! -f "$MODELS_CONFIG" ]; then
-        return 1
-    fi
-
-    local in_default=0
-    while IFS= read -r line; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-        if [[ "$line" =~ ^default[[:space:]]*\{$ ]]; then
-            in_default=1
-            continue
-        fi
-
-        if [ "$in_default" -eq 1 ]; then
-            if [ "$line" = "}" ]; then
-                break
-            fi
-            if [[ "$line" =~ ^provider[[:space:]]*=[[:space:]]*\"?([^\"]+)\"? ]]; then
+        if [ "$in_block" -eq 1 ]; then
+            if [[ "$line" =~ ^${field}[[:space:]]*:[[:space:]]*\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
                 echo "${BASH_REMATCH[1]}"
                 return 0
             fi
@@ -172,57 +214,83 @@ get_default_provider() {
     return 1
 }
 
-# Get default model from models.config
-get_default_model() {
+# Get default from models.config
+get_default() {
     if [ ! -f "$MODELS_CONFIG" ]; then
         return 1
     fi
 
-    local in_default=0
     while IFS= read -r line; do
         line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-        if [[ "$line" =~ ^default[[:space:]]*\{$ ]]; then
-            in_default=1
-            continue
-        fi
+        [ -z "$line" ] && continue
+        [[ "$line" =~ ^# ]] && continue
 
-        if [ "$in_default" -eq 1 ]; then
-            if [ "$line" = "}" ]; then
-                break
-            fi
-            if [[ "$line" =~ ^model[[:space:]]*=[[:space:]]*\"?([^\"]+)\"? ]]; then
-                echo "${BASH_REMATCH[1]}"
-                return 0
-            fi
+        if [[ "$line" =~ ^default[[:space:]]*=\ *\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return 0
         fi
     done < "$MODELS_CONFIG"
 
     return 1
+}
+
+# Check if name is a provider (has base_url)
+is_provider() {
+    local name="$1"
+    get_provider_config "$name" "base_url" &>/dev/null
 }
 
 # Load from models.config
 load_from_models_config() {
-    local provider="$1"
-    local model="$2"  # optional
+    local input="$1"
+    local explicit_model="$2"  # optional explicit model from provider:model syntax
 
+    # Determine if input is a provider or alias/model
+    local provider=""
+    local model=""
+
+    if is_provider "$input"; then
+        # It's a provider
+        provider="$input"
+        model="$explicit_model"
+    else
+        # It's an alias - resolve to provider:model
+        provider=$(get_model_config "$input" "provider")
+        model=$(get_model_config "$input" "id")
+
+        if [ -z "$provider" ]; then
+            # Maybe it's just a simple alias pointing to another alias
+            local resolved
+            resolved=$(resolve_alias "$input") || {
+                print_error "Unknown model/alias: $input"
+                return 1
+            }
+            # Try again with resolved
+            provider=$(get_model_config "$resolved" "provider")
+            model=$(get_model_config "$resolved" "id")
+        fi
+    fi
+
+    if [ -z "$provider" ]; then
+        print_error "Cannot determine provider for: $input"
+        return 1
+    fi
+
+    # Get provider config
     local base_url=$(get_provider_config "$provider" "base_url")
     local api_key=$(get_provider_config "$provider" "api_key")
-    local provider_default_model=$(get_provider_config "$provider" "default_model")
 
     if [ -z "$base_url" ] || [ -z "$api_key" ]; then
         print_error "Provider '$provider' not found in $MODELS_CONFIG"
         return 1
     fi
 
-    # Determine model to use
+    # Determine final model
     local final_model="$model"
     if [ -z "$final_model" ]; then
-        # Try to get model from models section
-        final_model=$(get_model_config "$provider" "model" 2>/dev/null)
-        if [ -z "$final_model" ]; then
-            final_model="$provider_default_model"
-        fi
+        # No model specified, use none (provider's default)
+        final_model=""
     fi
 
     # Set environment variables
@@ -244,7 +312,7 @@ provider_exists() {
     # Check old-style env.* config
     [ -f "$CONFIGS_DIR/env.$provider" ] && return 0
     # Check new models.config
-    has_models_config && get_provider_config "$provider" "base_url" &>/dev/null && return 0
+    has_models_config && is_provider "$provider" && return 0
     return 1
 }
 
