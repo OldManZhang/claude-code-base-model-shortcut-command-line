@@ -108,26 +108,59 @@ cc glm --print --verbose
 
 ### models.config 格式
 
-```bash
-# ===== Providers =====
-# 定义 API 端点和认证信息
-export PROVIDER_kimi="https://api.moonshot.cn|your-api-key"
-export PROVIDER_glm="https://open.bigmodel.cn/api/paas/v4|your-api-key"
-export PROVIDER_openai="https://api.openai.com/v1|your-api-key"
+配置文件为 JSON 格式，位于 `~/.cc/models.config`。
 
-# ===== Models =====
-# 定义具体模型配置
-export MODEL_moonshot-v1-8k="kimi|moonshot-v1-8k"
-export MODEL_moonshot-v1-128k="kimi|moonshot-v1-128k"
-export MODEL_glm-4-flash="glm|glm-4-flash"
-export MODEL_gpt-4o="openai|gpt-4o"
-
-# ===== Aliases =====
-# 定义便捷别名
-alias code="kimi:moonshot-v1-8k"
-alias long="kimi:moonshot-v1-128k"
-alias fast="glm:glm-4-flash"
+```json
+{
+  "providers": {
+    "kimi": {
+      "base_url": "https://api.kimi.com/coding/",
+      "api_key": "your-kimi-api-key",
+      "default_model": "kimi-for-coding"
+    },
+    "glm": {
+      "base_url": "https://open.bigmodel.cn/api/anthropic",
+      "api_key": "your-glm-api-key"
+    },
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "your-openai-api-key"
+    },
+    "minimax": {
+      "base_url": "https://api.minimaxi.com/anthropic",
+      "api_key": "your-minimax-api-key",
+      "default_model": "MiniMax-M2.5"
+    }
+  },
+  "models": {
+    "claude-sonnet": {
+      "provider": "anthropic",
+      "id": "claude-sonnet-4-20250514"
+    },
+    "gpt4": {
+      "provider": "openai",
+      "id": "gpt-4o"
+    },
+    "minimax-m2.5": {
+      "provider": "minimax",
+      "id": "MiniMax-M2.5"
+    }
+  },
+  "default": {
+    "provider": "kimi"
+  }
+}
 ```
+
+**字段说明：**
+- `providers` - 定义 API 提供商，每个 provider 包含：
+  - `base_url`: API 端点地址
+  - `api_key`: API 密钥
+  - `default_model`: 可选，默认使用的模型
+- `models` - 定义模型别名，方便使用
+  - `provider`: 对应的 provider 名称
+  - `id`: 具体模型 ID
+- `default` - 设置默认 provider
 
 ### 直接使用环境变量
 
@@ -147,12 +180,12 @@ claude
 
 ### 设置默认提供商
 
-```bash
-# 方式 1: 使用环境变量
-export CC_DEFAULT_PROVIDER=kimi
+在 `~/.cc/models.config` 的 `default` 字段中设置：
 
-# 方式 2: 在配置文件中设置默认模型别名
-alias default="kimi:moonshot-v1-8k"
+```json
+"default": {
+  "provider": "kimi"
+}
 ```
 
 ### 自定义配置目录
@@ -172,27 +205,35 @@ export CC_PATH="/path/to/your/configs"
 ## 添加新提供商
 
 1. 编辑 `~/.cc/models.config`
-2. 添加 PROVIDER 配置：
-   ```bash
-   export PROVIDER_myprovider="https://api.myprovider.com|your-api-key"
+2. 在 `providers` 中添加新配置：
+   ```json
+   "myprovider": {
+     "base_url": "https://api.myprovider.com/anthropic",
+     "api_key": "your-api-key",
+     "default_model": "my-model-name"
+   }
    ```
-3. 添加 MODEL 配置：
-   ```bash
-   export MODEL_my-model="myprovider|my-model-name"
+3. 可选：在 `models` 中添加别名：
+   ```json
+   "my-alias": {
+     "provider": "myprovider",
+     "id": "my-model-name"
+   }
    ```
 4. 使用：
    ```bash
    cc myprovider
    # 或
    cc myprovider:my-model
+   # 或
+   cc my-alias
    ```
 
 ## 环境变量参考
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `CC_DEFAULT_PROVIDER` | 默认提供商 | `kimi` |
-| `CC_PATH` | 配置目录 | `~/.cc/configs` |
+| `CC_PATH` | 配置目录 | `~/.cc` |
 | `ANTHROPIC_BASE_URL` | API 端点 | - |
 | `ANTHROPIC_AUTH_TOKEN` | API 密钥 | - |
 | `ANTHROPIC_MODEL` | 模型名称 | - |
