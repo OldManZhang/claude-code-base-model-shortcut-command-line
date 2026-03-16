@@ -5,9 +5,21 @@
 
 set -e
 
-# Configuration directory - use CC_PATH if set, otherwise default to ~/.cc/configs
-CONFIGS_DIR="${CC_PATH:-$HOME/.cc/configs}"
-MODELS_CONFIG="${CC_PATH:-$HOME/.cc}/models.config"
+# Configuration directory - use CC_PATH if set, otherwise default to ~/.cc
+CC_PATH="${CC_PATH:-$HOME/.cc}"
+CONFIGS_DIR="${CC_PATH}/configs"
+MODELS_CONFIG="${CC_PATH}/models.config"
+
+# Check for jq
+check_jq() {
+    if ! command -v jq &> /dev/null; then
+        echo "Error: jq is required but not installed."
+        echo "Please install jq:"
+        echo "  macOS: brew install jq"
+        echo "  Linux: sudo apt install jq"
+        exit 1
+    fi
+}
 
 # Colors for output
 RED='\033[0;31m'
@@ -16,7 +28,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Function to print colored output
 print_info() {
     echo -e "${BLUE}ℹ${NC} $1"
 }
@@ -33,32 +44,12 @@ print_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
 
-# Extract provider name from env.* file
-get_provider_name() {
-    basename "$1" | sed 's/^env\.//'
-}
-
 # Check if new models.config exists
 has_models_config() {
-    [ -f "$MODELS_CONFIG" ]
-}
-
-# Parse a value from config (handles both "value" and { key: value } formats)
-parse_config_value() {
-    local line="$1"
-    local key="$2"
-
-    # Check for simple key = "value" or key = value
-    if [[ "$line" =~ ^${key}[[:space:]]*=[[:space:]]*\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
-        echo "${BASH_REMATCH[1]}"
-        return 0
-    fi
-
-    return 1
+    [ -f "$MODELS_CONFIG" ] && [ -s "$MODELS_CONFIG" ]
 }
 
 # Get provider config from models.config
-# New format: provider_name = { base_url: "...", api_key: "..." }
 get_provider_config() {
     local provider="$1"
     local field="$2"  # base_url, api_key
@@ -67,151 +58,44 @@ get_provider_config() {
         return 1
     fi
 
-    local in_block=0
-
-    while IFS= read -r line; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-        # Skip comments and empty lines
-        [ -z "$line" ] && continue
-        [[ "$line" =~ ^# ]] && continue
-
-        # Check for block start: key = {
-        if [[ "$line" =~ ^${provider}[[:space:]]*=\ *\{[[:space:]]*$ ]]; then
-            in_block=1
-            continue
-        fi
-
-        # Check for block end
-        if [ "$in_block" -eq 1 ] && [ "$line" = "}" ]; then
-            break
-        fi
-
-        # Parse field inside block
-        if [ "$in_block" -eq 1 ]; then
-            if [[ "$line" =~ ^${field}[[:space:]]*:[[:space:]]*\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
-                echo "${BASH_REMATCH[1]}"
-                return 0
-            fi
-        fi
-    done < "$MODELS_CONFIG"
-
-    return 1
+    jq -r ".providers | to_entries | .[] | select(.key == \"$provider\") | .value.${field}" "$MODELS_CONFIG" 2>/dev/null | grep -v "^null$" || return 1
 }
 
-# Check if a name is defined in config (either provider or model/alias)
-get_config_entry() {
+# Check if a name is a provider
+is_provider() {
     local name="$1"
+    local result
+    result=$(jq -r ".providers | to_entries | .[] | select(.key == \"$name\") | .value" "$MODELS_CONFIG" 2>/dev/null)
+    [ -n "$result" ] && [ "$result" != "null" ]
+}
+
+# Get model/alias config from models.config
+get_model_config() {
+    local model="$1"
+    local field="$2"  # provider, id
 
     if [ ! -f "$MODELS_CONFIG" ]; then
         return 1
     fi
 
-    while IFS= read -r line; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # Use to_entries to handle keys with special characters like hyphens
+    local result
+    result=$(jq -r ".models | to_entries | .[] | select(.key == \"$model\") | .value.${field}" "$MODELS_CONFIG" 2>/dev/null | grep -v "^null$")
 
-        [ -z "$line" ] && continue
-        [[ "$line" =~ ^# ]] && continue
-
-        # Match key = { or key = "value" or key = value
-        if [[ "$line" =~ ^${name}[[:space:]]*=\ *\{ ]]; then
-            # It's a block definition
-            echo "block"
-            return 0
-        elif [[ "$line" =~ ^${name}[[:space:]]*=\ *\"?[^\"{}]+\"?[[:space:]]*$ ]]; then
-            # It's a simple value (could be alias or default)
-            echo "value"
-            return 0
-        fi
-    done < "$MODELS_CONFIG"
-
-    return 1
-}
-
-# Resolve alias to final value
-resolve_alias() {
-    local name="$1"
-    local max_depth=10
-    local depth=0
-
-    while [ $depth -lt $max_depth ]; do
-        local entry_type
-        entry_type=$(get_config_entry "$name") || break
-
-        if [ "$entry_type" = "value" ]; then
-            # Get the value
-            while IFS= read -r line; do
-                line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                [ -z "$line" ] && continue
-                [[ "$line" =~ ^# ]] && continue
-
-                if [[ "$line" =~ ^${name}[[:space:]]*=\ *\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
-                    local value="${BASH_REMATCH[1]}"
-                    # Check if it's another alias
-                    if get_config_entry "$value" &>/dev/null; then
-                        name="$value"
-                        depth=$((depth + 1))
-                        continue 2
-                    else
-                        echo "$value"
-                        return 0
-                    fi
-                fi
-            done < "$MODELS_CONFIG"
-            break
-        else
-            # It's a block, return the name itself
-            echo "$name"
-            return 0
-        fi
-    done
-
-    return 1
-}
-
-# Get model/alias config from models.config
-# New format: alias = { provider: "...", id: "..." }
-get_model_config() {
-    local alias="$1"
-    local field="$2"  # provider, id
-
-    # First resolve the alias
-    local resolved
-    resolved=$(resolve_alias "$alias") || return 1
-
-    # If resolved is different, it means it's an alias chain
-    if [ "$resolved" != "$alias" ]; then
-        # Continue resolving
-        resolved=$(resolve_alias "$resolved") || return 1
+    if [ -n "$result" ]; then
+        echo "$result"
+        return 0
     fi
 
-    # Now get the config for the resolved name
-    local in_block=0
-
-    while IFS= read -r line; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-        [ -z "$line" ] && continue
-        [[ "$line" =~ ^# ]] && continue
-
-        if [[ "$line" =~ ^${resolved}[[:space:]]*=\ *\{[[:space:]]*$ ]]; then
-            in_block=1
-            continue
-        fi
-
-        if [ "$in_block" -eq 1 ] && [ "$line" = "}" ]; then
-            break
-        fi
-
-        if [ "$in_block" -eq 1 ]; then
-            if [[ "$line" =~ ^${field}[[:space:]]*:[[:space:]]*\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
-                echo "${BASH_REMATCH[1]}"
-                return 0
-            fi
-        fi
-    done < "$MODELS_CONFIG"
-
-    return 1
+    # Check if it's an alias (simple string value)
+    result=$(jq -r ".models | to_entries | .[] | select(.key == \"$model\") | .value" "$MODELS_CONFIG" 2>/dev/null)
+    if [[ "$result" == \"*\" ]]; then
+        # It's an alias, resolve it
+        local target="${result//\"/}"
+        get_model_config "$target" "$field"
+    else
+        return 1
+    fi
 }
 
 # Get default from models.config
@@ -220,56 +104,66 @@ get_default() {
         return 1
     fi
 
-    while IFS= read -r line; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    jq -r '.default' "$MODELS_CONFIG" 2>/dev/null | grep -v "^null$" || return 1
+}
 
-        [ -z "$line" ] && continue
-        [[ "$line" =~ ^# ]] && continue
+# Check if name is defined in config
+get_config_entry() {
+    local name="$1"
 
-        if [[ "$line" =~ ^default[[:space:]]*=\ *\"?([^\"{}]+)\"?[[:space:]]*$ ]]; then
-            echo "${BASH_REMATCH[1]}"
-            return 0
-        fi
-    done < "$MODELS_CONFIG"
+    if [ ! -f "$MODELS_CONFIG" ]; then
+        return 1
+    fi
+
+    # Check providers
+    local result
+    result=$(jq -r ".providers | to_entries | .[] | select(.key == \"$name\") | .value" "$MODELS_CONFIG" 2>/dev/null)
+    if [ -n "$result" ] && [ "$result" != "null" ]; then
+        echo "provider"
+        return 0
+    fi
+
+    # Check models
+    result=$(jq -r ".models | to_entries | .[] | select(.key == \"$name\") | .value" "$MODELS_CONFIG" 2>/dev/null)
+    if [ -n "$result" ] && [ "$result" != "null" ]; then
+        echo "model"
+        return 0
+    fi
 
     return 1
 }
 
-# Check if name is a provider (has base_url)
-is_provider() {
+# Resolve alias to final model name
+resolve_alias() {
     local name="$1"
-    get_provider_config "$name" "base_url" &>/dev/null
+    local result
+
+    result=$(jq -r ".models.${name}" "$MODELS_CONFIG" 2>/dev/null)
+
+    if [[ "$result" == \"*\" ]]; then
+        # It's an alias
+        local target="${result//\"/}"
+        echo "$target"
+    else
+        echo "$name"
+    fi
 }
 
 # Load from models.config
 load_from_models_config() {
     local input="$1"
-    local explicit_model="$2"  # optional explicit model from provider:model syntax
+    local explicit_model="$2"
 
-    # Determine if input is a provider or alias/model
     local provider=""
     local model=""
 
     if is_provider "$input"; then
-        # It's a provider
         provider="$input"
         model="$explicit_model"
     else
-        # It's an alias - resolve to provider:model
+        # It's an alias
         provider=$(get_model_config "$input" "provider")
         model=$(get_model_config "$input" "id")
-
-        if [ -z "$provider" ]; then
-            # Maybe it's just a simple alias pointing to another alias
-            local resolved
-            resolved=$(resolve_alias "$input") || {
-                print_error "Unknown model/alias: $input"
-                return 1
-            }
-            # Try again with resolved
-            provider=$(get_model_config "$resolved" "provider")
-            model=$(get_model_config "$resolved" "id")
-        fi
     fi
 
     if [ -z "$provider" ]; then
@@ -277,7 +171,6 @@ load_from_models_config() {
         return 1
     fi
 
-    # Get provider config
     local base_url=$(get_provider_config "$provider" "base_url")
     local api_key=$(get_provider_config "$provider" "api_key")
 
@@ -286,24 +179,21 @@ load_from_models_config() {
         return 1
     fi
 
-    # Determine final model
-    local final_model="$model"
-    if [ -z "$final_model" ]; then
-        # No model specified, use none (provider's default)
-        final_model=""
-    fi
-
-    # Set environment variables
     export ANTHROPIC_BASE_URL="$base_url"
     export ANTHROPIC_AUTH_TOKEN="$api_key"
-    if [ -n "$final_model" ]; then
-        export ANTHROPIC_MODEL="$final_model"
+    if [ -n "$model" ]; then
+        export ANTHROPIC_MODEL="$model"
     fi
 
     print_success "Configuration loaded for $provider"
-    if [ -n "$final_model" ]; then
-        print_info "Model: $final_model"
+    if [ -n "$model" ]; then
+        print_info "Model: $model"
     fi
+}
+
+# Extract provider name from env.* file
+get_provider_name() {
+    basename "$1" | sed 's/^env\.//'
 }
 
 # Check if a provider exists (in either old env.* or new models.config)
@@ -321,113 +211,70 @@ list_configs() {
     print_info "Available configurations:"
     echo
 
-    # Print environment variables and config path info
     echo "Environment variables:"
     echo "  CC_PATH=${CC_PATH:-<not set>}"
     echo "  CC_DEFAULT_PROVIDER=${CC_DEFAULT_PROVIDER:-<not set>}"
     echo "  LLM_PROVIDER=${LLM_PROVIDER:-<not set>}"
     echo
 
-    local config_type=""
     if has_models_config; then
-        echo "Configuration file: $MODELS_CONFIG (new format)"
-        config_type="new"
-    else
+        echo "Configuration file: $MODELS_CONFIG (JSON format)"
+    elif [ -d "$CONFIGS_DIR" ]; then
         echo "Configuration directory: $CONFIGS_DIR (legacy env.* format)"
-        config_type="legacy"
+    else
+        echo "No configuration found"
     fi
     echo
 
-    local count=0
     local default_provider="${CC_DEFAULT_PROVIDER:-}"
 
-    # If using new models.config, list providers from it
-    if [ "$config_type" = "new" ]; then
-        # Get default from models.config if not set
+    if has_models_config; then
         if [ -z "$default_provider" ]; then
-            default_provider=$(get_default_provider 2>/dev/null || echo "kimi")
+            default_provider=$(get_default 2>/dev/null || echo "")
         fi
 
-        # Read providers from models.config
-        local in_providers=0
-        while IFS= read -r line; do
-            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            if [[ "$line" =~ ^providers[[:space:]]*\{$ ]]; then
-                in_providers=1
-                continue
+        # List providers
+        print_info "Providers:"
+        for prov in $(jq -r '.providers | keys[]' "$MODELS_CONFIG" 2>/dev/null); do
+            local current_marker=""
+            local default_marker=""
+
+            if [ -n "$LLM_PROVIDER" ] && [ "$LLM_PROVIDER" = "$prov" ]; then
+                current_marker=" $(print_success "[current]")"
             fi
-            if [ "$in_providers" -eq 1 ]; then
-                if [ "$line" = "}" ]; then
-                    break
-                fi
-                # Extract provider name (word before {)
-                if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*\{$ ]]; then
-                    local name="${BASH_REMATCH[1]}"
-                    local current_marker=""
-                    local default_marker=""
 
-                    if [ -n "$LLM_PROVIDER" ] && [ "$LLM_PROVIDER" = "$name" ]; then
-                        current_marker=" $(print_success "[current]")"
-                    fi
-
-                    if [ "$name" = "$default_provider" ]; then
-                        default_marker=" $(print_info "[default]")"
-                    fi
-
-                    local model=$(get_provider_config "$name" "default_model" 2>/dev/null || echo "")
-                    if [ -n "$model" ]; then
-                        echo -e "  ${GREEN}$name${NC} ($model)$current_marker$default_marker"
-                    else
-                        echo -e "  ${GREEN}$name${NC}$current_marker$default_marker"
-                    fi
-                    count=$((count + 1))
-                fi
+            if [ "$prov" = "$default_provider" ]; then
+                default_marker=" $(print_info "[default]")"
             fi
-        done < "$MODELS_CONFIG"
+
+            echo -e "  ${GREEN}$prov${NC}$current_marker$default_marker"
+        done
 
         # List models/aliases
-        local in_models=0
-        local has_models=false
-        while IFS= read -r line; do
-            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            if [[ "$line" =~ ^models[[:space:]]*\{$ ]]; then
-                in_models=1
-                has_models=true
-                continue
-            fi
-            if [ "$in_models" -eq 1 ]; then
-                if [ "$line" = "}" ]; then
-                    break
-                fi
-                # Extract alias name (word before = or {)
-                if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*) ]]; then
-                    local name="${BASH_REMATCH[1]}"
-                    # Skip if it's a provider name
-                    if ! get_provider_config "$name" "base_url" &>/dev/null; then
-                        echo -e "  ${YELLOW}$name${NC} (alias)"
-                    fi
-                fi
-            fi
-        done < "$MODELS_CONFIG"
-    else
-        # Legacy env.* format
-        echo "Configuration directory: $CONFIGS_DIR"
-        echo
+        print_info "Models/Aliases:"
+        for model in $(jq -r '.models | keys[]' "$MODELS_CONFIG" 2>/dev/null); do
+            local provider=$(get_model_config "$model" "provider" 2>/dev/null || echo "")
+            local id=$(get_model_config "$model" "id" 2>/dev/null || echo "")
 
+            if [ -n "$provider" ] && [ -n "$id" ]; then
+                echo -e "  ${YELLOW}$model${NC} ($provider:$id)"
+            else
+                echo -e "  ${YELLOW}$model${NC}"
+            fi
+        done
+    elif [ -d "$CONFIGS_DIR" ]; then
+        # Legacy env.* format
+        local count=0
         for config in "$CONFIGS_DIR"/env.*; do
             if [ -f "$config" ]; then
                 local name=$(get_provider_name "$config")
                 local current_marker=""
                 local default_marker=""
 
-                # Check if current configuration matches
-                if [ -n "$LLM_PROVIDER" ]; then
-                    if [ "$LLM_PROVIDER" = "$name" ] || [ -f "$CONFIGS_DIR/env.$LLM_PROVIDER" ]; then
-                        current_marker=" $(print_success "[current]")"
-                    fi
+                if [ -n "$LLM_PROVIDER" ] && [ "$LLM_PROVIDER" = "$name" ]; then
+                    current_marker=" $(print_success "[current]")"
                 fi
 
-                # Mark default provider
                 if [ -n "$default_provider" ] && [ "$name" = "$default_provider" ]; then
                     default_marker=" $(print_info "[default]")"
                 elif [ "$name" = "kimi" ] && [ -z "$default_provider" ]; then
@@ -442,6 +289,8 @@ list_configs() {
         if [ $count -eq 0 ]; then
             print_warning "No configurations found in $CONFIGS_DIR/env.*"
         fi
+    else
+        print_warning "No configurations found"
     fi
 }
 
@@ -449,50 +298,74 @@ list_configs() {
 show_current() {
     print_info "Current configuration status:"
     echo
+
     echo "Environment variables:"
     echo "  CC_PATH=${CC_PATH:-<not set>}"
     echo "  CC_DEFAULT_PROVIDER=${CC_DEFAULT_PROVIDER:-<not set>}"
     echo "  LLM_PROVIDER=${LLM_PROVIDER:-<not set>}"
     echo
-    echo "Configuration directory: $CONFIGS_DIR"
+
+    if has_models_config; then
+        echo "Configuration file: $MODELS_CONFIG"
+    else
+        echo "Configuration directory: $CONFIGS_DIR"
+    fi
     echo
 
     if [ -n "$LLM_PROVIDER" ]; then
         print_info "Active provider: $LLM_PROVIDER"
         echo
-        local config_file="$CONFIGS_DIR/env.$LLM_PROVIDER"
-        if [ -f "$config_file" ]; then
-            echo "Configuration file: $config_file"
-            echo
-            echo "Environment variables from config:"
-            grep "^export" "$config_file" | sed 's/^/  /'
+
+        if has_models_config && is_provider "$LLM_PROVIDER"; then
+            local base_url=$(get_provider_config "$LLM_PROVIDER" "base_url")
+            local api_key=$(get_provider_config "$LLM_PROVIDER" "api_key")
+            echo "Configuration:"
+            echo "  base_url: $base_url"
+            echo "  api_key: ****"
         else
-            print_warning "Configuration file for $LLM_PROVIDER not found at: $config_file"
+            local config_file="$CONFIGS_DIR/env.$LLM_PROVIDER"
+            if [ -f "$config_file" ]; then
+                echo "Configuration file: $config_file"
+                echo
+                echo "Environment variables from config:"
+                grep "^export" "$config_file" | sed 's/^/  /'
+            else
+                print_warning "Configuration file for $LLM_PROVIDER not found at: $config_file"
+            fi
         fi
     else
         print_warning "No configuration is currently active"
     fi
 }
 
-# Load a configuration
 load_config() {
     local input="$1"
-    shift  # Remaining arguments go to claude
+    shift
 
     if [ -z "$input" ]; then
-        print_error "Provider name is required"
+        print_error "Provider/alias name is required"
         echo
-        print_info "Usage: cc <provider> or cc <provider>:<model>"
+        print_info "Usage: cc <provider> or cc <alias>"
         echo
         list_configs
         exit 1
     fi
 
-    # Parse input for provider:model syntax
+    # Check if input is an alias first
+    local is_alias=false
+    if has_models_config && get_config_entry "$input" 2>/dev/null | grep -q "model"; then
+        is_alias=true
+    fi
+
     local provider="$input"
     local model=""
 
-    if [[ "$input" == *":"* ]]; then
+    if [ "$is_alias" = true ]; then
+        # It's an alias - resolve it
+        provider=$(get_model_config "$input" "provider")
+        model=$(get_model_config "$input" "id")
+    elif [[ "$input" == *":"* ]]; then
+        # Parse provider:model syntax
         provider="${input%%:*}"
         model="${input#*:}"
     fi
@@ -500,42 +373,60 @@ load_config() {
     # Check if provider exists in models.config first, then fall back to env.*
     local use_models_config=false
 
-    if has_models_config && get_provider_config "$provider" "base_url" &>/dev/null; then
+    # If it's an alias, we already have provider and model
+    if [ "$is_alias" = true ]; then
+        use_models_config=true
+    elif has_models_config && is_provider "$provider"; then
         use_models_config=true
     elif [ ! -f "$CONFIGS_DIR/env.$provider" ]; then
         print_error "Configuration for '$provider' not found"
         echo
-        print_info "Available providers:"
+        print_info "Available configurations:"
         list_configs
         exit 1
     fi
 
-    # Shift args - provider is consumed, remaining goes to claude
     local claude_args=("$@")
 
     if [ "$use_models_config" = true ]; then
-        print_info "Loading configuration for $provider..."
         if [ -n "$model" ]; then
-            print_info "Model: $model"
+            print_info "Loading $provider with model $model..."
+        else
+            print_info "Loading configuration for $provider..."
         fi
         echo
 
-        # Load from models.config
-        load_from_models_config "$provider" "$model"
+        # Set environment variables directly
+        local base_url=$(get_provider_config "$provider" "base_url")
+        local api_key=$(get_provider_config "$provider" "api_key")
+
+        if [ -z "$base_url" ] || [ -z "$api_key" ]; then
+            print_error "Provider '$provider' not found in $MODELS_CONFIG"
+            exit 1
+        fi
+
+        export ANTHROPIC_BASE_URL="$base_url"
+        export ANTHROPIC_AUTH_TOKEN="$api_key"
+        if [ -n "$model" ]; then
+            export ANTHROPIC_MODEL="$model"
+        fi
+
+        print_success "Configuration loaded for $provider"
+        if [ -n "$model" ]; then
+            print_info "Model: $model"
+        fi
 
         echo
         print_success "Now you can use Claude with $provider configuration"
         echo
 
-        # Check if claude command exists
         if command -v claude &> /dev/null; then
             print_info "Starting Claude CLI..."
             echo
             claude "${claude_args[@]}"
         else
             print_warning "Claude CLI not found in PATH"
-            print_info "Make sure Claude CLI is installed and in your PATH"
-            print_info "You can download it from: https://claude.ai/claude-cli"
+            print_info "Make sure Claude CLI is installed"
         fi
     else
         # Use old-style env.* config
@@ -544,54 +435,30 @@ load_config() {
         print_info "Loading configuration for $provider..."
         echo
 
-        # Source the config to set environment variables in current shell
         source "$config_file"
 
         print_success "Configuration loaded for $provider"
         echo
-        print_info "Environment variables set:"
 
-        # Show which environment variables were set
-        grep "^export" "$config_file" | sed 's/^export /  /' | while read -r line; do
-            local var_name=$(echo "$line" | cut -d= -f1)
-            local var_value=$(eval echo "\$$var_name")
-            if [ -n "$var_value" ]; then
-                # Mask the actual value for security
-                echo -e "  ${GREEN}$var_name${NC}=****"
-            fi
-        done
-
-        echo
-        print_success "Now you can use Claude with $provider configuration"
-        echo
-
-        # Check if claude command exists
         if command -v claude &> /dev/null; then
             print_info "Starting Claude CLI..."
             echo
             claude "${claude_args[@]}"
         else
             print_warning "Claude CLI not found in PATH"
-            print_info "Make sure Claude CLI is installed and in your PATH"
-            print_info "You can download it from: https://claude.ai/claude-cli"
         fi
     fi
 }
 
-# Load default configuration
 load_default_config() {
-    # Collect all arguments to pass through to claude
     local args=("$@")
 
-    # First check CC_DEFAULT_PROVIDER environment variable
     local default_provider="${CC_DEFAULT_PROVIDER:-}"
 
-    # If not set, try to get from models.config
     if [ -z "$default_provider" ] && has_models_config; then
-        default_provider=$(get_default_provider 2>/dev/null)
+        default_provider=$(get_default 2>/dev/null || echo "")
     fi
 
-    # If not set, try kimi as fallback
     if [ -z "$default_provider" ]; then
         if provider_exists "kimi"; then
             default_provider="kimi"
@@ -613,51 +480,39 @@ load_default_config() {
     load_config "$default_provider" "${args[@]}"
 }
 
-# Show usage
 show_usage() {
     echo "Usage: cc [provider] [arguments...]"
     echo
     echo "Arguments:"
-    echo "  provider            LLM provider to use (kimi, glm, openai, anthropic, etc.)"
-    echo "                     Or provider:model (e.g., kimi:moonshot-v1-8k)"
-    echo "                     Or model alias (e.g., gpt4, sonnet)"
+    echo "  provider            LLM provider to use (kimi, glm, openai, etc.)"
+    echo "                     Or model alias (gpt4, claude-sonnet, etc.)"
+    echo "                     Or provider:model (e.g., kimi:gpt-4o)"
     echo "  arguments           Additional arguments passed to claude CLI"
     echo
     echo "Commands:"
-    echo "  <provider>          Switch to specified provider and start Claude"
-    echo "  <provider>:<model>  Switch to provider with specific model"
-    echo "  <alias>            Use model alias (from models.config)"
-    echo "  <provider> <args>   Switch to provider and pass args to claude"
-    echo "  <args>             Use default provider and pass args to claude"
-    echo "  (no args)          Load default provider and start Claude"
+    echo "  <provider>          Switch to specified provider"
+    echo "  <alias>            Use model alias"
+    echo "  <provider>:<model> Switch to provider with specific model"
     echo "  list, ls           List all available configurations"
     echo "  current            Show current configuration"
     echo "  help, -h, --help   Show this help message"
     echo
     echo "Configuration:"
-    if has_models_config; then
-        echo "  Config file: $MODELS_CONFIG (new format)"
-    else
-        echo "  Config files follow env.MODEL_NAME format in $CONFIGS_DIR"
-    fi
-    echo "  Set CC_PATH to customize config directory (default: ~/.cc)"
-    echo "  Set CC_DEFAULT_PROVIDER env var to change default provider"
+    echo "  JSON config: $MODELS_CONFIG"
+    echo "  Legacy: $CONFIGS_DIR/env.*"
     echo
     echo "Examples:"
     echo "  cc                  Use default provider"
-    echo "  cc kimi             Switch to kimi configuration"
-    echo "  cc glm              Switch to glm configuration"
-    echo "  cc kimi:gpt-4o      Use kimi with specific model"
-    echo "  cc sonnet           Use alias (from models.config)"
-    echo "  cc kimi --print     Switch to kimi and pass --print to claude"
-    echo "  cc --print         Use default provider and pass --print to claude"
-    echo "  cc --version        Check claude version"
+    echo "  cc kimi             Switch to kimi"
+    echo "  cc gpt4             Use gpt4 alias"
+    echo "  cc minimax-m2.5     Use minimax-m2.5 alias"
     echo "  cc list             List all providers"
-    echo "  cc current          Show current provider"
 }
 
-# Main command dispatcher
 main() {
+    # Check for jq first
+    check_jq
+
     local command="${1:-}"
 
     case "$command" in
@@ -674,17 +529,16 @@ main() {
             exit 0
             ;;
         "")
-            # No argument provided, load default config
             load_default_config
             exit $?
             ;;
         *)
-            # Check if first argument is a valid provider
+            # Check if it's a provider or an alias
             if provider_exists "$command"; then
-                # First arg is a provider, pass all args to load_config
                 load_config "$@"
+            elif has_models_config && get_config_entry "$command" &>/dev/null; then
+                load_config "$command"
             else
-                # First arg is not a valid provider, use default config and pass all args
                 load_default_config "$@"
             fi
             exit $?
