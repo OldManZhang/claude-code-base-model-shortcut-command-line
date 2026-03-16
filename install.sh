@@ -9,130 +9,223 @@ INSTALL_DIR="${HOME}/.local/bin"
 CONFIG_DIR="${HOME}/.cc/configs"
 REPO_URL="https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-shortcut-command-line/main"
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Helper functions (using printf for sh compatibility)
+step() {
+    printf "\n${BOLD}${BLUE}▶ $1${NC}\n\n"
+}
+
+doing() {
+    printf "  ${YELLOW}○${NC} $1...\n"
+}
+
+done_msg() {
+    printf "  ${GREEN}✓${NC} $1\n"
+}
+
+info() {
+    printf "  ${BLUE}→${NC} $1\n"
+}
+
+warn() {
+    printf "  ${YELLOW}!${NC} $1\n"
+}
+
+error() {
+    printf "  ${RED}✗${NC} $1\n"
+}
+
+# Banner
+printf "\n${BOLD}╔═══════════════════════════════════════════╗${NC}\n"
+printf "${BOLD}║        cc - Claude CLI Provider Manager   ║${NC}\n"
+printf "${BOLD}╚═══════════════════════════════════════════╝${NC}\n"
+
+# Step 1: Prepare source files
+step "步骤 1/4: 准备安装文件"
+
 # Detect if running via pipe (curl | sh)
 if [ -t 0 ]; then
     # Running directly (not piped), use script's directory
     CC_REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+    doing "检测安装方式"
+    done_msg "本地安装 (从 $CC_REPO_DIR)"
 else
     # Running via pipe, download files to temp directory
-    echo "Running via pipe, downloading files..."
+    doing "检测安装方式"
+    done_msg "远程安装 (从 GitHub 下载)"
+
     TEMP_DIR=$(mktemp -d)
     trap "rm -rf '$TEMP_DIR'" EXIT
 
     mkdir -p "$TEMP_DIR/bin"
     mkdir -p "$TEMP_DIR/configs"
 
-    echo "Downloading cc script..."
+    doing "下载 cc 主程序"
     curl -fsSL "$REPO_URL/bin/cc" -o "$TEMP_DIR/bin/cc"
     chmod +x "$TEMP_DIR/bin/cc"
+    done_msg "cc 主程序下载完成"
 
-    echo "Downloading sample configs..."
+    doing "下载配置文件模板"
+    config_count=0
     for config in env.kimi env.glm env.openai env.anthropic env.minimax; do
-        curl -fsSL "$REPO_URL/configs/$config" -o "$TEMP_DIR/configs/$config" 2>/dev/null || true
+        if curl -fsSL "$REPO_URL/configs/$config" -o "$TEMP_DIR/configs/$config" 2>/dev/null; then
+            config_count=$((config_count + 1))
+        fi
     done
-
     curl -fsSL "$REPO_URL/env.sample" -o "$TEMP_DIR/env.sample" 2>/dev/null || true
+    done_msg "已下载 $config_count 个配置模板"
 
     CC_REPO_DIR="$TEMP_DIR"
 fi
 
-echo "Installing cc..."
+# Step 2: Install cc command
+step "步骤 2/4: 安装 cc 命令"
 
-# Create install directory
+doing "创建安装目录"
 mkdir -p "$INSTALL_DIR"
+done_msg "安装目录: $INSTALL_DIR"
 
-# Install cc command
-echo "Installing cc to $INSTALL_DIR/cc"
+doing "安装 cc 可执行文件"
+if [ -f "$INSTALL_DIR/cc" ]; then
+    warn "已存在旧版本，将被覆盖"
+fi
 cp "$CC_REPO_DIR/bin/cc" "$INSTALL_DIR/cc"
 chmod +x "$INSTALL_DIR/cc"
+done_msg "已安装到: $INSTALL_DIR/cc"
 
-# Create config directory
+# Step 3: Setup configuration
+step "步骤 3/4: 配置初始化"
+
+doing "创建配置目录"
 mkdir -p "$CONFIG_DIR"
+done_msg "配置目录: $CONFIG_DIR"
 
-# Copy sample config if no configs exist
+# Check if configs need to be copied
+config_needs_copy=false
 if [ ! -f "$CONFIG_DIR/env.kimi" ] && [ ! -f "$CONFIG_DIR/env.glm" ] && [ ! -f "$CONFIG_DIR/env.openai" ]; then
-    echo "Installing sample configs to $CONFIG_DIR"
+    config_needs_copy=true
+fi
+
+if [ "$config_needs_copy" = true ]; then
+    doing "复制配置模板"
     for config in "$CC_REPO_DIR"/configs/env.*; do
         if [ -f "$config" ]; then
             cp "$config" "$CONFIG_DIR/"
         fi
     done
-
-    # Copy sample
     if [ -f "$CC_REPO_DIR/env.sample" ]; then
         cp "$CC_REPO_DIR/env.sample" "$CONFIG_DIR/"
     fi
+    done_msg "配置模板已复制"
+else
+    info "配置文件已存在，跳过复制"
 fi
 
 # Migrate old env.* configs to new models.config format
 MODELS_CONFIG="${HOME}/.cc/models.config"
 if [ -d "$CONFIG_DIR" ] && [ ! -f "$MODELS_CONFIG" ]; then
-    # Check if there are old config files
     old_configs=("$CONFIG_DIR"/env.*)
     if [ -f "${old_configs[0]}" ]; then
-        echo "Migrating old configs to new models.config format..."
-        echo
-
+        doing "迁移旧配置到新格式"
         {
-            echo "# Migrated from old env.* format"
-            echo "# Edit this file to update your configuration"
-            echo
-            echo "providers {"
+            printf "# Migrated from old env.* format\n"
+            printf "# Edit this file to update your configuration\n\n"
+            printf "providers {\n"
 
             for config in "$CONFIG_DIR"/env.*; do
                 if [ -f "$config" ]; then
                     provider=$(basename "$config" | sed 's/^env\.//')
-
-                    # Extract values from env file
                     base_url=$(grep "^export ANTHROPIC_BASE_URL=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
                     api_key=$(grep "^export ANTHROPIC_AUTH_TOKEN=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
                     model=$(grep "^export ANTHROPIC_MODEL=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
 
                     if [ -n "$base_url" ] && [ -n "$api_key" ]; then
-                        echo "  $provider {"
-                        echo "    base_url=\"$base_url\""
-                        echo "    api_key=\"$api_key\""
+                        printf "  %s {\n" "$provider"
+                        printf "    base_url=\"%s\"\n" "$base_url"
+                        printf "    api_key=\"%s\"\n" "$api_key"
                         if [ -n "$model" ]; then
-                            echo "    default_model=\"$model\""
+                            printf "    default_model=\"%s\"\n" "$model"
                         fi
-                        echo "  }"
-                        echo
-                        echo "  # Migrated from $config"
-                        echo
+                        printf "  }\n\n"
+                        printf "  # Migrated from %s\n\n" "$config"
                     fi
                 fi
             done
 
-            echo "}"
-            echo
-            echo "default {"
-            echo "  provider=\"kimi\""
-            echo "}"
+            printf "}\n\n"
+            printf "default {\n"
+            printf "  provider=\"kimi\"\n"
+            printf "}\n"
         } > "$MODELS_CONFIG"
-
-        echo "Migration complete! Created $MODELS_CONFIG"
-        echo "Your old configs are kept in $CONFIG_DIR/"
-        echo
+        done_msg "已创建: $MODELS_CONFIG"
+        info "旧配置文件保留在 $CONFIG_DIR/"
     fi
+elif [ -f "$MODELS_CONFIG" ]; then
+    info "配置文件已存在: $MODELS_CONFIG"
 fi
 
-# Add to PATH if not already in PATH
+# Step 4: Configure PATH
+step "步骤 4/4: 配置环境变量"
+
 SHELL_RC=""
+SHELL_NAME=""
 if [ -n "$ZSH_VERSION" ]; then
     SHELL_RC="$HOME/.zshrc"
+    SHELL_NAME="zsh"
 elif [ -n "$BASH_VERSION" ]; then
     SHELL_RC="$HOME/.bashrc"
+    SHELL_NAME="bash"
 fi
 
+PATH_CONFIGURED=false
 if [ -n "$SHELL_RC" ]; then
-    if ! grep -q '~/.local/bin' "$SHELL_RC" 2>/dev/null; then
-        echo "" >> "$SHELL_RC"
-        echo '# cc' >> "$SHELL_RC"
-        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
-        echo "Added ~/.local/bin to PATH in $SHELL_RC"
-        echo "Please run: source $SHELL_RC"
+    doing "检查 PATH 配置"
+    if grep -q '\.local/bin' "$SHELL_RC" 2>/dev/null; then
+        done_msg "PATH 已配置 (在 $SHELL_RC)"
+        PATH_CONFIGURED=true
+    else
+        doing "添加 ~/.local/bin 到 PATH"
+        printf "\n" >> "$SHELL_RC"
+        printf "# cc - Claude CLI Provider Manager\n" >> "$SHELL_RC"
+        printf 'export PATH="$HOME/.local/bin:$PATH"\n' >> "$SHELL_RC"
+        done_msg "已添加到 $SHELL_RC"
     fi
+else
+    warn "无法检测 shell 配置文件，请手动添加 PATH"
 fi
 
-echo "Installation complete!"
-echo "Run 'cc help' to get started."
+# Summary
+printf "\n${BOLD}══════════════════════════════════════════════${NC}\n"
+printf "${GREEN}${BOLD}  安装完成!${NC}\n"
+printf "${BOLD}══════════════════════════════════════════════${NC}\n"
+
+printf "\n${BOLD}已安装:${NC}\n"
+printf "  • cc 命令: ${GREEN}$INSTALL_DIR/cc${NC}\n"
+printf "  • 配置目录: ${GREEN}$CONFIG_DIR${NC}\n"
+if [ -f "$MODELS_CONFIG" ]; then
+    printf "  • 配置文件: ${GREEN}$MODELS_CONFIG${NC}\n"
+fi
+
+printf "\n${BOLD}后续步骤:${NC}\n"
+if [ "$PATH_CONFIGURED" = true ]; then
+    printf "  ${YELLOW}1.${NC} PATH 已配置，运行以下命令使其生效:\n"
+    printf "     ${BLUE}source %s${NC}\n" "$SHELL_RC"
+else
+    printf "  ${YELLOW}1.${NC} 将以下内容添加到你的 shell 配置文件:\n"
+    printf "     ${BLUE}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}\n"
+fi
+printf "  ${YELLOW}2.${NC} 编辑配置文件添加你的 API Key:\n"
+printf "     ${BLUE}vim ~/.cc/models.config${NC}\n"
+printf "  ${YELLOW}3.${NC} 运行以下命令开始使用:\n"
+printf "     ${BLUE}cc help${NC}  - 查看帮助\n"
+printf "     ${BLUE}cc list${NC}  - 列出所有提供商\n"
+printf "     ${BLUE}cc kimi${NC}  - 切换到 kimi 提供商\n"
+
+printf "\n"
