@@ -25,6 +25,10 @@
     }
   },
   "models": {
+    "kimi": {
+      "provider": "kimi",
+      "id": "kimi-for-coding"
+    },
     "qwen": {
       "provider": "bailian",
       "id": "qwen3.5-plug"
@@ -46,5 +50,5 @@
       "id": "MiniMax-M2.5-highspeed"
     }
   },
-  "default": "kimi"
+  "default": "minimax-m2.5"
 }
