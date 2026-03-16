@@ -5,8 +5,8 @@
 
 set -e
 
-# Configuration directory - always use ~/.cc/configs in production
-CONFIGS_DIR="$HOME/.cc/configs"
+# Configuration directory - use CC_PATH if set, otherwise default to ~/.cc/configs
+CONFIGS_DIR="${CC_PATH:-$HOME/.cc/configs}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -50,6 +50,7 @@ list_configs() {
 
     # Print environment variables and config path info
     echo "Environment variables:"
+    echo "  CC_PATH=${CC_PATH:-<not set>}"
     echo "  CC_DEFAULT_PROVIDER=${CC_DEFAULT_PROVIDER:-<not set>}"
     echo "  LLM_PROVIDER=${LLM_PROVIDER:-<not set>}"
     echo
@@ -95,6 +96,7 @@ show_current() {
     print_info "Current configuration status:"
     echo
     echo "Environment variables:"
+    echo "  CC_PATH=${CC_PATH:-<not set>}"
     echo "  CC_DEFAULT_PROVIDER=${CC_DEFAULT_PROVIDER:-<not set>}"
     echo "  LLM_PROVIDER=${LLM_PROVIDER:-<not set>}"
     echo
@@ -221,6 +223,7 @@ show_usage() {
     echo
     echo "Configuration:"
     echo "  Config files follow env.MODEL_NAME format in $CONFIGS_DIR"
+    echo "  Set CC_PATH to customize config directory (default: ~/.cc/configs)"
     echo "  Set CC_DEFAULT_PROVIDER env var to change default provider"
     echo
     echo "Examples:"
