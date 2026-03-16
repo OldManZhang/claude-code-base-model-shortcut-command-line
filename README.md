@@ -165,26 +165,6 @@ cc glm --print --verbose
   - `id`: 具体模型 ID
 - `default` - 设置默认 provider
 
-### 切换提供商但不启动 Claude
-
-如果只想切换环境变量但不立即启动 Claude，可以使用旧的 `env.*` 配置文件：
-
-```bash
-# 切换到 kimi（只在当前 shell 设置环境变量）
-source ~/.cc/configs/env.kimi
-
-# 切换到 glm
-source ~/.cc/configs/env.glm
-
-# 验证切换成功
-echo $ANTHROPIC_BASE_URL
-
-# 然后手动启动 Claude
-claude
-```
-
-这样可以在同一个终端会话中切换多次 provider。
-
 ### 直接使用环境变量
 
 如果不想使用配置文件，也可以直接设置环境变量：
