@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - 添加 `install.sh` 一键安装脚本，支持 `curl -fsSL <url>/install.sh | sh` 安装
+- 添加统一配置文件 `~/.cc/models.config`，支持 providers 和 models 配置
+- 支持 `cc <provider>:<model>` 语法指定具体模型
+- 支持模型别名 (alias) 配置
+- 保持向后兼容，保留 `~/.cc/configs/env.*` 文件支持
+
+### Changed
+- 优先读取新的 `models.config`，如不存在则回退到旧的 `env.*` 格式
 
 ## [v0.1.0] - 2025-01-29
 
