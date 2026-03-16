@@ -213,7 +213,6 @@ list_configs() {
 
     echo "Environment variables:"
     echo "  CC_PATH=${CC_PATH:-<not set>}"
-    echo "  CC_DEFAULT_PROVIDER=${CC_DEFAULT_PROVIDER:-<not set>}"
     echo "  LLM_PROVIDER=${LLM_PROVIDER:-<not set>}"
     echo
 
@@ -226,11 +225,10 @@ list_configs() {
     fi
     echo
 
-    local default_provider="${CC_DEFAULT_PROVIDER:-}"
 
     if has_models_config; then
-        if [ -z "$default_provider" ]; then
-            default_provider=$(get_default 2>/dev/null || echo "")
+        if [ -z "$default" ]; then
+            default=$(get_default 2>/dev/null || echo "")
         fi
 
         # List providers
@@ -240,26 +238,32 @@ list_configs() {
             local default_marker=""
 
             if [ -n "$LLM_PROVIDER" ] && [ "$LLM_PROVIDER" = "$prov" ]; then
-                current_marker=" $(print_success "[current]")"
+                current_marker=" [current]"
             fi
 
-            if [ "$prov" = "$default_provider" ]; then
-                default_marker=" $(print_info "[default]")"
+            # Mark default if it's a provider
+            if [ "$default" = "$prov" ]; then
+                default_marker=" [default]"
             fi
 
-            echo -e "  ${GREEN}$prov${NC}$current_marker$default_marker"
+            echo -e "  ${GREEN}${prov}${NC}${current_marker}${default_marker}"
         done
 
         # List models/aliases
-        print_info "Models/Aliases:"
+        echo "Models/Aliases:"
         for model in $(jq -r '.models | keys[]' "$MODELS_CONFIG" 2>/dev/null); do
             local provider=$(get_model_config "$model" "provider" 2>/dev/null || echo "")
             local id=$(get_model_config "$model" "id" 2>/dev/null || echo "")
 
+            local default_marker=""
+            if [ "$default" = "$model" ]; then
+                default_marker=" [default]"
+            fi
+
             if [ -n "$provider" ] && [ -n "$id" ]; then
-                echo -e "  ${YELLOW}$model${NC} ($provider:$id)"
+                echo -e "  ${YELLOW}${model}${NC} (${provider}:${id})${default_marker}"
             else
-                echo -e "  ${YELLOW}$model${NC}"
+                echo -e "  ${YELLOW}${model}${NC}${default_marker}"
             fi
         done
     elif [ -d "$CONFIGS_DIR" ]; then
@@ -301,7 +305,6 @@ show_current() {
 
     echo "Environment variables:"
     echo "  CC_PATH=${CC_PATH:-<not set>}"
-    echo "  CC_DEFAULT_PROVIDER=${CC_DEFAULT_PROVIDER:-<not set>}"
     echo "  LLM_PROVIDER=${LLM_PROVIDER:-<not set>}"
     echo
 
@@ -453,7 +456,6 @@ load_config() {
 load_default_config() {
     local args=("$@")
 
-    local default_provider="${CC_DEFAULT_PROVIDER:-}"
 
     if [ -z "$default_provider" ] && has_models_config; then
         default_provider=$(get_default 2>/dev/null || echo "")
