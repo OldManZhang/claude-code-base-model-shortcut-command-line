@@ -65,6 +65,8 @@ cc list
 
 ## 使用方法
 
+> **注意**: 运行 `cc <provider>` 会加载配置并自动启动 Claude CLI。
+
 ### 基本命令
 
 ```bash
@@ -74,15 +76,16 @@ cc list
 # 显示当前配置
 cc current
 
-# 使用默认配置启动 Claude
+# 使用默认配置启动 Claude（会加载默认 provider 并启动）
 cc
 
-# 切换到指定提供商
+# 切换到指定提供商并启动 Claude
 cc kimi
 cc openai
 cc glm
+cc minimax
 
-# 传递参数给 claude CLI
+# 传递参数给 Claude CLI
 cc kimi --version
 cc --print
 ```
@@ -91,10 +94,10 @@ cc --print
 
 ```bash
 # 指定具体模型
-cc kimi:moonshot-v1-8k
+cc kimi:kimi-for-coding
 
-# 使用模型别名
-cc kimi:code
+# 使用模型别名（在 models 中配置）
+cc minimax-m2.5
 
 # 传递多个参数
 cc glm --print --verbose
@@ -161,6 +164,26 @@ cc glm --print --verbose
   - `provider`: 对应的 provider 名称
   - `id`: 具体模型 ID
 - `default` - 设置默认 provider
+
+### 切换提供商但不启动 Claude
+
+如果只想切换环境变量但不立即启动 Claude，可以使用旧的 `env.*` 配置文件：
+
+```bash
+# 切换到 kimi（只在当前 shell 设置环境变量）
+source ~/.cc/configs/env.kimi
+
+# 切换到 glm
+source ~/.cc/configs/env.glm
+
+# 验证切换成功
+echo $ANTHROPIC_BASE_URL
+
+# 然后手动启动 Claude
+claude
+```
+
+这样可以在同一个终端会话中切换多次 provider。
 
 ### 直接使用环境变量
 
