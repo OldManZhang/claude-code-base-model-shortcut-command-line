@@ -1,14 +1,33 @@
 # cc - Claude Command Line Manager
 
-`cc` 是一个简单易用的命令行工具，用于在不同的大模型提供商之间切换配置，并启动 Claude CLI。
+`cc` 是一个轻量级的命令行工具，用于在不同的大模型提供商之间切换配置，并启动 Claude CLI。
 
 ## 特性
 
-- 🔄 **快速切换** - 只需一个命令即可切换不同 LLM 提供商
-- 📝 **基于配置文件** - 所有配置通过 `~/.cc/configs/` 目录下的配置文件管理，切换就是切换配置文件
-- 🎯 **简单配置** - 基于纯环境变量配置文件
-- 🔧 **易于扩展** - 添加新提供商只需添加配置文件，无需修改代码
-- 📦 **轻量级** - 纯 Shell 脚本，无复杂依赖
+- **快速切换** - 只需一个命令即可切换不同 LLM 提供商
+- **基于配置文件** - 所有配置通过 `~/.cc/models.config` 统一管理
+- **简单配置** - 纯 Shell 脚本格式，无需复杂依赖
+- **易于扩展** - 添加新提供商只需添加配置，无需修改代码
+- **轻量级** - 纯 Shell 脚本，无外部依赖
+
+## 快速开始
+
+```bash
+# 一键安装
+curl -fsSL https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-shortcut-command-line/main/install.sh | sh
+
+# 使 PATH 生效
+source ~/.zshrc
+
+# 列出可用提供商
+cc list
+
+# 使用默认配置启动 Claude
+cc
+
+# 切换到指定提供商
+cc kimi
+```
 
 ## 安装
 
@@ -18,7 +37,7 @@
 curl -fsSL https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-shortcut-command-line/main/install.sh | sh
 ```
 
-安装完成后，记得运行以下命令使 PATH 生效：
+安装完成后，运行以下命令使 PATH 生效：
 
 ```bash
 source ~/.zshrc  # 或 ~/.bashrc
@@ -27,17 +46,18 @@ source ~/.zshrc  # 或 ~/.bashrc
 ### 手动安装
 
 ```bash
-# 克隆或下载项目后
+# 克隆项目
 git clone https://github.com/OldManZhang/claude-code-base-model-shortcut-command-line.git
 cd claude-code-base-model-shortcut-command-line
 
-# 安装到系统
-cp bin/cc ~/.local/bin/
+# 安装到 ~/.local/bin/
+cp bin/cc ~/.local/bin/cc
 
-# 确认~/.local/bin/ 添加到 PATH
-echo $PATH | grep -q "~/.local/bin"
+# 确保 ~/.local/bin 在 PATH 中
+# 编辑 ~/.zshrc 添加: export PATH="$HOME/.local/bin:$PATH"
 
-# 重启 terminal
+# 生效配置
+source ~/.zshrc
 
 # 验证安装
 cc list
@@ -45,151 +65,198 @@ cc list
 
 ## 使用方法
 
-所有配置都通过 `~/.cc/configs/` 目录下的配置文件管理。**每个提供商对应一个配置文件**，查看、切换提供商其实就是查看、切换配置文件：
-
-### 查看可用配置（所有配置文件）
+### 基本命令
 
 ```bash
+# 列出所有可用配置
 cc list
-```
 
-### 显示当前配置
-
-```bash
+# 显示当前配置
 cc current
-```
 
-### 使用默认配置启动 Claude
-
-```bash
-# 使用默认提供商启动（ 通过 CC_DEFAULT_PROVIDER 设置）
+# 使用默认配置启动 Claude
 cc
-```
 
-### 切换到指定提供商并启动 Claude（就是切换配置文件）
-
-```bash
-# 使用 OpenAI 配置文件
+# 切换到指定提供商
+cc kimi
 cc openai
+cc glm
 
-# 使用 Anthropic 配置文件
-cc anthropic
+# 传递参数给 claude CLI
+cc kimi --version
+cc --print
 ```
 
-### 查看帮助
+### 高级用法
 
 ```bash
-cc help
+# 指定具体模型
+cc kimi:moonshot-v1-8k
+
+# 使用模型别名
+cc kimi:code
+
+# 传递多个参数
+cc glm --print --verbose
 ```
 
 ## 配置方法
 
-### 配置文件格式
+### 配置文件位置
 
-所有配置文件位于 `~/.cc/configs/` 目录中，遵循 `env.MODEL_NAME` 格式。
+配置文件位于 `~/.cc/models.config`（推荐）或 `~/.cc/configs/env.*`（兼容旧版本）。
 
-配置文件使用标准的 `export` 语句，设置 **ANTHROPIC_** 开头的环境变量：
+### models.config 格式
 
 ```bash
-# 配置文件命名
-env.openai
-env.anthropic
+# ===== Providers =====
+# 定义 API 端点和认证信息
+export PROVIDER_kimi="https://api.moonshot.cn|your-api-key"
+export PROVIDER_glm="https://open.bigmodel.cn/api/paas/v4|your-api-key"
+export PROVIDER_openai="https://api.openai.com/v1|your-api-key"
+
+# ===== Models =====
+# 定义具体模型配置
+export MODEL_moonshot-v1-8k="kimi|moonshot-v1-8k"
+export MODEL_moonshot-v1-128k="kimi|moonshot-v1-128k"
+export MODEL_glm-4-flash="glm|glm-4-flash"
+export MODEL_gpt-4o="openai|gpt-4o"
+
+# ===== Aliases =====
+# 定义便捷别名
+alias code="kimi:moonshot-v1-8k"
+alias long="kimi:moonshot-v1-128k"
+alias fast="glm:glm-4-flash"
 ```
 
-### 编辑配置文件
+### 直接使用环境变量
 
-编辑相应文件添加您的 API 密钥：
+如果不想使用配置文件，也可以直接设置环境变量：
 
 ```bash
-# 编辑 kimi 配置
-vim ~/.cc/configs/env.kimi
-
-# 内容示例：
+# 方法 1: 在命令行设置
 export ANTHROPIC_BASE_URL="https://api.moonshot.cn"
-export ANTHROPIC_AUTH_TOKEN="your-actual-api-key-here"
+export ANTHROPIC_AUTH_TOKEN="your-api-key"
 export ANTHROPIC_MODEL="moonshot-v1-8k"
+claude
+
+# 方法 2: 在 shell 配置中设置
+# 在 ~/.zshrc 中添加:
+# export ANTHROPIC_AUTH_TOKEN="your-api-key"
 ```
 
 ### 设置默认提供商
 
-您可以通过环境变量设置默认提供商：
+```bash
+# 方式 1: 使用环境变量
+export CC_DEFAULT_PROVIDER=kimi
+
+# 方式 2: 在配置文件中设置默认模型别名
+alias default="kimi:moonshot-v1-8k"
+```
+
+### 自定义配置目录
 
 ```bash
-# 设置默认提供商为 GLM
-export CC_DEFAULT_PROVIDER=glm
-
-# 然后直接使用 cc 启动默认提供商
-cc
+# 使用 CC_PATH 环境变量自定义配置目录
+export CC_PATH="/path/to/your/configs"
 ```
 
 ### 获取 API 密钥
+
+- **Kimi (Moonshot)**: [https://platform.moonshot.cn/](https://platform.moonshot.cn/)
+- **GLM (Zhipu AI)**: [https://open.bigmodel.cn/](https://open.bigmodel.cn/)
 - **OpenAI**: [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 - **Anthropic**: [https://console.anthropic.com/](https://console.anthropic.com/)
 
 ## 添加新提供商
 
-添加新提供商的核心就是**创建新的配置文件** - 无需修改任何代码：
-
-1. 在 `~/.cc/configs/` 目录创建配置文件，格式为 `env.PROVIDER_NAME`：
+1. 编辑 `~/.cc/models.config`
+2. 添加 PROVIDER 配置：
    ```bash
-   vim ~/.cc/configs/env.myprovider
+   export PROVIDER_myprovider="https://api.myprovider.com|your-api-key"
    ```
-
-2. 添加 ANTHROPIC_* 环境变量配置：
+3. 添加 MODEL 配置：
    ```bash
-   # MyProvider Configuration
-   export ANTHROPIC_AUTH_TOKEN="your-api-key"
-   export ANTHROPIC_BASE_URL="https://api.myprovider.com"
-   export ANTHROPIC_MODEL="my-model"
+   export MODEL_my-model="myprovider|my-model-name"
    ```
-
-3. 使用新配置：
+4. 使用：
    ```bash
    cc myprovider
+   # 或
+   cc myprovider:my-model
    ```
+
+## 环境变量参考
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `CC_DEFAULT_PROVIDER` | 默认提供商 | `kimi` |
+| `CC_PATH` | 配置目录 | `~/.cc/configs` |
+| `ANTHROPIC_BASE_URL` | API 端点 | - |
+| `ANTHROPIC_AUTH_TOKEN` | API 密钥 | - |
+| `ANTHROPIC_MODEL` | 模型名称 | - |
+
+## 常见问题
+
+### Q: 安装后提示 "command not found"
+
+确保 `~/.local/bin` 在 PATH 中：
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### Q: 如何查看当前使用的是哪个配置？
+
+```bash
+cc current
+```
+
+### Q: 配置文件在哪里？
+
+- 推荐: `~/.cc/models.config`
+- 兼容旧版: `~/.cc/configs/env.*`
+
+### Q: 可以同时使用多个配置吗？
+
+可以，每次运行 `cc <provider>` 会在新的 shell 会话中加载对应配置。
+
+### Q: API 密钥安全吗？
+
+配置文件中的密钥仅存储在本地，不会被提交到版本控制系统。建议设置适当的文件权限：
+```bash
+chmod 600 ~/.cc/models.config
+```
 
 ## 项目结构
 
 ```
 .
 ├── bin/
-│   └── cc                    # cc 命令脚本
-└── env.sample                 # 配置文件样例
+│   └── cc                    # 主命令脚本
+├── configs/                  # 配置文件目录
+├── install.sh                # 安装脚本
 └── README.md                 # 本文档
 ```
 
 ## 工作原理
 
-整个工具围绕**配置文件**设计，切换提供商就是切换不同的配置文件：
-
-1. `cc <provider>` 命令读取 `~/.cc/configs/env.<provider>` 配置文件
-2. 使用 `source` 命令在当前 shell 环境中设置 ANTHROPIC_* 环境变量
-3. 自动启动 Claude CLI，传入相应的环境变量
-4. 如果不带参数运行 `cc`，会加载默认配置（kimi 或通过 CC_DEFAULT_PROVIDER 环境变量指定）
+1. `cc <provider>` 读取 `~/.cc/models.config` 中的对应配置
+2. 使用 `source` 命令设置 `ANTHROPIC_*` 环境变量
+3. 启动 Claude CLI，传入相应的环境变量
 
 ## 注意事项
 
-- 配置文件使用 `env.MODEL_NAME` 格式命名，包含标准的 `export ANTHROPIC_*` 语句
 - API 密钥等敏感信息请妥善保管，不要提交到版本控制系统
 - 环境变量只在当前 shell 会话中有效
-- 配置文件位于 `~/.cc/configs/` 目录
 - 建议在使用前先编辑配置文件添加您的真实 API 密钥
-- 默认提供商可通过 `CC_DEFAULT_PROVIDER` 环境变量自定义
 
-## Changelog
+## 相关链接
 
-### v0.2.1 (2025-03-16)
-
-- **新增**: 添加 CC_PATH 环境变量支持
-  - 设置 `CC_PATH` 自定义配置文件目录
-  - 默认使用 `~/.cc/configs`
-
-### v0.2.0 (2025-03-16)
-
-- **新增**: 支持将命令行参数传递给 claude CLI
-  - `cc kimi --version` - 切换到 kimi 并传递参数
-  - `cc --print` - 使用默认 provider 并传递参数
-  - `cc glm --print --verbose` - 传递多个参数
+- [Claude CLI 文档](https://docs.anthropic.com/en/docs/claude-code)
+- [Moonshot API 文档](https://platform.moonshot.cn/docs)
+- [Zhipu AI API 文档](https://open.bigmodel.cn/doc/)
 
 ## 许可证
 
