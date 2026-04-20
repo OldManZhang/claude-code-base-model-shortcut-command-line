@@ -9,9 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+## [v0.2.3] - 2026-04-20
+
+### Added
+
+- `--dry-run` 模式，验证配置不启动 Claude
+- `--` 分隔符，明确区分 cc 参数和 claude 参数
+
 ### Changed
 
+- **BREAKING**: 移除 alias 支持，统一使用 `provider:model` 格式
+- **BREAKING**: `models` 配置从顶层移入 `providers.<provider>.models`
+- **BREAKING**: `default` 格式改为 `provider:model` 字符串
+- `cc <provider>` 不再支持，必须使用 `cc <provider>:<model>`
+
 ### Fixed
+
+- 修复 model 验证，确保指定的 model 存在于 provider 下
+
+## [v0.2.2] - 2026-03-16
 
 ## [v0.2.1] - 2026-03-16
 

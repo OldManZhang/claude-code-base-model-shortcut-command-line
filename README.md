@@ -1,6 +1,6 @@
 # cc - Claude Command Line Manager
 
-`cc` 是一个轻量级的命令行工具，用于在不同的大模型提供商之间切换配置，并启动 Claude CLI。
+`cc` 是一个轻量级的命令行工具，用于在**不同的大模型**提供商之间切换配置，并启动 Claude CLI。
 
 ## 特性
 
@@ -19,14 +19,17 @@ curl -fsSL https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-
 # 使 PATH 生效
 source ~/.zshrc
 
+# 修改配置，添加上对应的 LLM 供应商和模型
+# edit ~/.cc/models.config
+
 # 列出可用提供商
 cc list
 
 # 使用默认配置启动 Claude
 cc
 
-# 切换到指定提供商
-cc kimi
+# 使用指定配置启动 Claude
+cc kimi:kimi-for-coding
 ```
 
 ## 安装
@@ -65,42 +68,37 @@ cc list
 
 ## 使用方法
 
-> **注意**: 运行 `cc <provider>` 会加载配置并自动启动 Claude CLI。
-
 ### 基本命令
 
 ```bash
 # 列出所有可用配置
 cc list
 
-# 显示当前配置
-cc current
-
-# 使用默认配置启动 Claude（会加载默认 provider 并启动）
+# 使用默认配置启动 Claude
 cc
 
-# 切换到别名对应的模型
-cc kimi
-cc openai
-cc glm
-cc minimax
-
-# 传递参数给 Claude CLI
-cc kimi --version
-cc --print
+# 使用指定 provider:model 启动 Claude
+cc kimi:kimi-for-coding
 ```
 
-### 高级用法
+### Dry-run 模式
+
+验证配置是否正确，不启动 Claude CLI：
 
 ```bash
-# 指定具体模型
+cc --dry-run kimi:kimi-for-coding
+```
+
+### 传递参数给 Claude CLI
+
+使用 `--` 分隔符：
+
+```bash
+# 传递参数给 Claude
+cc kimi:kimi-for-coding -- --print "hello"
+
+# 不传递参数，启动交互式 Claude
 cc kimi:kimi-for-coding
-
-# 使用模型别名（在 models 中配置）
-cc minimax-m2.5
-
-# 传递多个参数
-cc glm --print --verbose
 ```
 
 ## 配置方法
@@ -111,45 +109,31 @@ cc glm --print --verbose
 
 ### models.config 格式
 
-配置文件为 JSON 格式，位于 `~/.cc/models.config`。
-
 ```json
 {
   "providers": {
     "kimi": {
-      "base_url": "https://api.kimi.com/coding/",
-      "api_key": "your-kimi-api-key"
+      "base_url": "https://api.moonshot.cn",
+      "api_key": "your-kimi-api-key",
+      "models": {
+        "kimi-for-coding": { "enable": true }
+      }
     },
     "glm": {
-      "base_url": "https://open.bigmodel.cn/api/anthropic",
-      "api_key": "your-glm-api-key"
-    },
-    "openai": {
-      "base_url": "https://api.openai.com/v1",
-      "api_key": "your-openai-api-key"
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "api_key": "your-glm-api-key",
+      "models": {}
     },
     "minimax": {
       "base_url": "https://api.minimaxi.com/anthropic",
-      "api_key": "your-minimax-api-key"
+      "api_key": "your-minimax-api-key",
+      "models": {
+        "MiniMax-M2.5": { "enable": true },
+        "MiniMax-M2.5-highspeed": { "enable": true }
+      }
     }
   },
-  "models": {
-    "claude-sonnet": {
-      "provider": "anthropic",
-      "id": "claude-sonnet-4-20250514"
-    },
-    "gpt4": {
-      "provider": "openai",
-      "id": "gpt-4o"
-    },
-    "minimax-m2.5": {
-      "provider": "minimax",
-      "id": "MiniMax-M2.5"
-    }
-  },
-  "default": {
-    "provider": "kimi"
-  }
+  "default": "minimax:MiniMax-M2.5"
 }
 ```
 
@@ -157,36 +141,10 @@ cc glm --print --verbose
 - `providers` - 定义 API 提供商，每个 provider 包含：
   - `base_url`: API 端点地址
   - `api_key`: API 密钥
-- `models` - 定义模型别名，方便使用
-  - `provider`: 对应的 provider 名称
-  - `id`: 具体模型 ID
-- `default` - 设置默认 provider
+  - `models`: 该 provider 支持的模型，key 是 model ID，value 包含 `enable` 属性
+- `default` - 设置默认 provider:model，格式为 `provider:model` 字符串
 
-### 直接使用环境变量
 
-如果不想使用配置文件，也可以直接设置环境变量：
-
-```bash
-# 方法 1: 在命令行设置
-export ANTHROPIC_BASE_URL="https://api.moonshot.cn"
-export ANTHROPIC_AUTH_TOKEN="your-api-key"
-export ANTHROPIC_MODEL="moonshot-v1-8k"
-claude
-
-# 方法 2: 在 shell 配置中设置
-# 在 ~/.zshrc 中添加:
-# export ANTHROPIC_AUTH_TOKEN="your-api-key"
-```
-
-### 设置默认提供商
-
-在 `~/.cc/models.config` 的 `default` 字段中设置：
-
-```json
-"default": {
-  "provider": "kimi"
-}
-```
 
 ### 自定义配置目录
 
@@ -201,6 +159,7 @@ export CC_PATH="/path/to/your/configs"
 - **GLM (Zhipu AI)**: [https://open.bigmodel.cn/](https://open.bigmodel.cn/)
 - **OpenAI**: [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 - **Anthropic**: [https://console.anthropic.com/](https://console.anthropic.com/)
+- **MiniMax**: [https://platform.minimaxi.com/](https://platform.minimaxi.com/)
 
 ## 添加新提供商
 
@@ -210,23 +169,14 @@ export CC_PATH="/path/to/your/configs"
    "myprovider": {
      "base_url": "https://api.myprovider.com/anthropic",
      "api_key": "your-api-key",
-     "default_model": "my-model-name"
+     "models": {
+       "my-model": { "enable": true }
+     }
    }
    ```
-3. 可选：在 `models` 中添加别名：
-   ```json
-   "my-alias": {
-     "provider": "myprovider",
-     "id": "my-model-name"
-   }
-   ```
-4. 使用：
+3. 使用：
    ```bash
-   cc myprovider
-   # 或
    cc myprovider:my-model
-   # 或
-   cc my-alias
    ```
 
 ## 环境变量参考
@@ -234,9 +184,7 @@ export CC_PATH="/path/to/your/configs"
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `CC_PATH` | 配置目录 | `~/.cc` |
-| `ANTHROPIC_BASE_URL` | API 端点 | - |
-| `ANTHROPIC_AUTH_TOKEN` | API 密钥 | - |
-| `ANTHROPIC_MODEL` | 模型名称 | - |
+
 
 ## 常见问题
 
@@ -248,19 +196,10 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-### Q: 如何查看当前使用的是哪个配置？
-
-```bash
-cc current
-```
 
 ### Q: 配置文件在哪里？
 
-- 配置文件: `~/.cc/models.config`
-
-### Q: 可以同时使用多个配置吗？
-
-可以，每次运行 `cc <provider>` 会在新的 shell 会话中加载对应配置。
+- 默认配置文件: `~/.cc/models.config`
 
 ### Q: API 密钥安全吗？
 
@@ -275,16 +214,68 @@ chmod 600 ~/.cc/models.config
 .
 ├── bin/
 │   └── cc                    # 主命令脚本
-├── configs/                  # 配置文件目录
+├── models.config.example     # 配置文件示例
 ├── install.sh                # 安装脚本
 └── README.md                 # 本文档
 ```
 
 ## 工作原理
 
-1. `cc <provider>` 读取 `~/.cc/models.config` 中的对应配置
-2. 使用 `source` 命令设置 `ANTHROPIC_*` 环境变量
+1. `cc <provider>:<model>` 读取 `~/.cc/models.config` 中的对应配置
+2. 使用 `source` 命令设置 `ANTHROPIC_*` 环境变量， `ANTHROPIC_BASE_URL` /`ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_MODEL`
 3. 启动 Claude CLI，传入相应的环境变量
+
+## 二次开发
+
+### 项目结构
+
+```
+.
+├── bin/cc                    # 主命令脚本
+├── tests/
+│   └── cc_test_cases.sh     # 测试用例
+├── models.config.example     # 配置文件示例
+├── install.sh                # 安装脚本
+
+```
+
+### 开发环境隔离
+
+本地开发时，可以使用 `CC_PATH` 指定开发配置目录，不影响生产配置：
+
+```bash
+# 创建开发配置目录
+mkdir .cc.dev
+cp ~/.cc/models.config .cc.dev/
+
+# 记得要在 .gitignore 中添加，进行 ignore
+
+# 使用本地 cc 脚本 + 本地配置
+CC_PATH="$(pwd)/.cc.dev" ./bin/cc kimi:kimi-for-coding
+```
+
+### 测试
+
+```bash
+# 运行测试用例
+chmod +x tests/cc_test_cases.sh
+./tests/cc_test_cases.sh
+
+# Dry-run 验证配置
+./bin/cc --dry-run kimi:kimi-for-coding
+```
+
+### 提交变更
+
+```bash
+git add .
+git commit -m "feat: 描述变更"
+```
+
+### 关键文件
+
+- `bin/cc` - 主脚本
+
 
 ## 注意事项
 
@@ -305,3 +296,5 @@ MIT
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request！
+
+
