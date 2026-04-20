@@ -118,7 +118,8 @@ step "步骤 4/4: 配置环境变量"
 
 SHELL_RC=""
 SHELL_NAME=""
-if [ -n "$ZSH_VERSION" ]; then
+# macOS 默认使用 zsh，其他系统检测 shell 类型
+if [ "$(uname)" = "Darwin" ] || [ -n "$ZSH_VERSION" ]; then
     SHELL_RC="$HOME/.zshrc"
     SHELL_NAME="zsh"
 elif [ -n "$BASH_VERSION" ]; then
