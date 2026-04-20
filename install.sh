@@ -73,14 +73,8 @@ else
     done_msg "cc 主程序下载完成"
 
     doing "下载配置文件模板"
-    config_count=0
-    for config in env.kimi env.glm env.openai env.anthropic env.minimax; do
-        if curl -fsSL "$REPO_URL/configs/$config" -o "$TEMP_DIR/configs/$config" 2>/dev/null; then
-            config_count=$((config_count + 1))
-        fi
-    done
-    curl -fsSL "$REPO_URL/env.sample" -o "$TEMP_DIR/env.sample" 2>/dev/null || true
-    done_msg "已下载 $config_count 个配置模板"
+    curl -fsSL "$REPO_URL/models.config.example" -o "$TEMP_DIR/models.config.example" 2>/dev/null || true
+    done_msg "已下载 models.config.example"
 
     CC_REPO_DIR="$TEMP_DIR"
 fi
@@ -107,23 +101,14 @@ doing "创建配置目录"
 mkdir -p "$CONFIG_DIR"
 done_msg "配置目录: $CONFIG_DIR"
 
-# Check if configs need to be copied
-config_needs_copy=false
-if [ ! -f "$CONFIG_DIR/env.kimi" ] && [ ! -f "$CONFIG_DIR/env.glm" ] && [ ! -f "$CONFIG_DIR/env.openai" ]; then
-    config_needs_copy=true
-fi
-
-if [ "$config_needs_copy" = true ]; then
+# Check if models.config needs to be copied
+MODELS_CONFIG="${HOME}/.cc/models.config"
+if [ ! -f "$MODELS_CONFIG" ]; then
     doing "复制配置模板"
-    for config in "$CC_REPO_DIR"/configs/env.*; do
-        if [ -f "$config" ]; then
-            cp "$config" "$CONFIG_DIR/"
-        fi
-    done
-    if [ -f "$CC_REPO_DIR/env.sample" ]; then
-        cp "$CC_REPO_DIR/env.sample" "$CONFIG_DIR/"
+    if [ -f "$CC_REPO_DIR/models.config.example" ]; then
+        cp "$CC_REPO_DIR/models.config.example" "$MODELS_CONFIG"
+        done_msg "已复制 models.config.example 到 $MODELS_CONFIG"
     fi
-    done_msg "配置模板已复制"
 else
     info "配置文件已存在，跳过复制"
 fi
@@ -154,13 +139,12 @@ if [ -d "$CONFIG_DIR" ] && [ ! -f "$MODELS_CONFIG" ]; then
                         fi
                         printf "    \"%s\": {\n" "$provider"
                         printf "      \"base_url\": \"%s\",\n" "$base_url"
-                        printf "      \"api_key\": \"%s\"" "$api_key"
+                        printf "      \"api_key\": \"%s\",\n" "$api_key"
+                        printf "      \"models\": {\n"
                         if [ -n "$model" ]; then
-                            printf ",\n"
-                            printf "      \"default_model\": \"%s\"\n" "$model"
-                        else
-                            printf "\n"
+                            printf "        \"%s\": { \"enable\": true }\n" "$model"
                         fi
+                        printf "      }\n"
                         printf "    }"
                     fi
                 fi
@@ -168,16 +152,16 @@ if [ -d "$CONFIG_DIR" ] && [ ! -f "$MODELS_CONFIG" ]; then
 
             printf "\n"
             printf "  },\n"
-            printf "  \"default\": {\n"
-            printf "    \"provider\": \"kimi\"\n"
-            printf "  }\n"
+            if [ -n "$model" ]; then
+                printf "  \"default\": \"%s:%s\"\n" "$provider" "$model"
+            else
+                printf "  \"default\": \"kimi:kimi-for-coding\"\n"
+            fi
             printf "}\n"
         } > "$MODELS_CONFIG"
         done_msg "已创建: $MODELS_CONFIG"
         info "旧配置文件保留在 $CONFIG_DIR/"
     fi
-elif [ -f "$MODELS_CONFIG" ]; then
-    info "配置文件已存在: $MODELS_CONFIG"
 fi
 
 # Step 4: Configure PATH
@@ -235,6 +219,6 @@ printf "     ${BLUE}vim ~/.cc/models.config${NC}\n"
 printf "  ${YELLOW}3.${NC} 运行以下命令开始使用:\n"
 printf "     ${BLUE}cc help${NC}  - 查看帮助\n"
 printf "     ${BLUE}cc list${NC}  - 列出所有提供商\n"
-printf "     ${BLUE}cc kimi${NC}  - 切换到 kimi 提供商\n"
+printf "     ${BLUE}cc --dry-run kimi:kimi-for-coding${NC}  - 验证配置\n"
 
 printf "\n"
