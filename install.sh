@@ -6,7 +6,7 @@
 set -e
 
 INSTALL_DIR="${HOME}/.local/bin"
-CONFIG_DIR="${HOME}/.cc/configs"
+CONFIG_DIR="${HOME}/.cc"
 REPO_URL="https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-shortcut-command-line/main"
 
 # Colors for output
@@ -111,57 +111,6 @@ if [ ! -f "$MODELS_CONFIG" ]; then
     fi
 else
     info "配置文件已存在，跳过复制"
-fi
-
-# Migrate old env.* configs to new models.config format
-MODELS_CONFIG="${HOME}/.cc/models.config"
-if [ -d "$CONFIG_DIR" ] && [ ! -f "$MODELS_CONFIG" ]; then
-    old_configs=("$CONFIG_DIR"/env.*)
-    if [ -f "${old_configs[0]}" ]; then
-        doing "迁移旧配置到新格式"
-        {
-            printf "{\n"
-            printf "  \"providers\": {\n"
-
-            first_provider=true
-            for config in "$CONFIG_DIR"/env.*; do
-                if [ -f "$config" ]; then
-                    provider=$(basename "$config" | sed 's/^env\.//')
-                    base_url=$(grep "^export ANTHROPIC_BASE_URL=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
-                    api_key=$(grep "^export ANTHROPIC_AUTH_TOKEN=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
-                    model=$(grep "^export ANTHROPIC_MODEL=" "$config" 2>/dev/null | cut -d= -f2- | tr -d '"')
-
-                    if [ -n "$base_url" ] && [ -n "$api_key" ]; then
-                        if [ "$first_provider" = true ]; then
-                            first_provider=false
-                        else
-                            printf ",\n"
-                        fi
-                        printf "    \"%s\": {\n" "$provider"
-                        printf "      \"base_url\": \"%s\",\n" "$base_url"
-                        printf "      \"api_key\": \"%s\",\n" "$api_key"
-                        printf "      \"models\": {\n"
-                        if [ -n "$model" ]; then
-                            printf "        \"%s\": { \"enable\": true }\n" "$model"
-                        fi
-                        printf "      }\n"
-                        printf "    }"
-                    fi
-                fi
-            done
-
-            printf "\n"
-            printf "  },\n"
-            if [ -n "$model" ]; then
-                printf "  \"default\": \"%s:%s\"\n" "$provider" "$model"
-            else
-                printf "  \"default\": \"kimi:kimi-for-coding\"\n"
-            fi
-            printf "}\n"
-        } > "$MODELS_CONFIG"
-        done_msg "已创建: $MODELS_CONFIG"
-        info "旧配置文件保留在 $CONFIG_DIR/"
-    fi
 fi
 
 # Step 4: Configure PATH
