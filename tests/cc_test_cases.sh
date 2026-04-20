@@ -127,6 +127,24 @@ test_case "provider 存在但 model 为空 - 应报错" \
     "yes"
 
 # ==========================================
+# 分隔符测试
+# ==========================================
+
+echo "========== 分隔符测试 =========="
+
+test_case "带分隔符 + claude args (--dry-run)" \
+    "$CC --dry-run kimi:kimi-for-coding -- --print" \
+    "no"
+
+test_case "无分隔符，只有 provider:model" \
+    "$CC --dry-run kimi:kimi-for-coding" \
+    "no"
+
+test_case "分隔符但无 claude args" \
+    "$CC --dry-run kimi:kimi-for-coding --" \
+    "no"
+
+# ==========================================
 # 帮助命令
 # ==========================================
 

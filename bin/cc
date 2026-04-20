@@ -281,8 +281,6 @@ load_config() {
         exit 1
     fi
 
-    local claude_args=("$@")
-
     # Check if provider exists in models.config first, then fall back to env.*
     if has_models_config && is_provider "$provider"; then
         # Validate model exists under provider
@@ -393,7 +391,7 @@ load_default_config() {
 }
 
 show_usage() {
-    echo "Usage: cc [options] <provider>:<model> [arguments...]"
+    echo "Usage: cc [options] <provider>:<model> -- [claude arguments]"
     echo
     echo "Commands:"
     echo "  <provider>:<model> Use specific model (e.g., kimi:kimi-for-coding)"
@@ -403,6 +401,9 @@ show_usage() {
     echo
     echo "Options:"
     echo "  --dry-run           Validate configuration without starting Claude"
+    echo
+    echo "Separator:"
+    echo "  --                  Separates cc args from claude arguments"
     echo
     echo "Configuration:"
     echo "  JSON config: $MODELS_CONFIG"
@@ -414,26 +415,40 @@ show_usage() {
     echo "  claude  # Run claude directly with your env vars"
     echo
     echo "Examples:"
-    echo "  cc                  Use default provider:model"
-    echo "  cc kimi:kimi-for-coding  Use kimi provider with kimi-for-coding model"
+    echo "  cc                          Use default provider:model"
+    echo "  cc kimi:kimi-for-coding     Start interactive Claude session"
+    echo "  cc kimi:kimi-for-coding -- --print 'hello'  Pass args to Claude"
     echo "  cc --dry-run kimi:kimi-for-coding  Validate without starting Claude"
-    echo "  cc list             List all providers and models"
+    echo "  cc list                     List all providers and models"
 }
 
 main() {
     # Check for jq first
     check_jq
 
-    # Check for --dry-run first and remove it from args
-    local new_args=()
+    # Parse arguments: separate cc args from claude args using --
+    local cc_args=()
+    local claude_args=()
+    local found_separator=false
+
     for arg in "$@"; do
-        if [ "$arg" = "--dry-run" ]; then
-            dry_run=1
+        if [ "$arg" = "--" ]; then
+            found_separator=true
+            continue
+        fi
+
+        if [ "$found_separator" = true ]; then
+            claude_args+=("$arg")
         else
-            new_args+=("$arg")
+            if [ "$arg" = "--dry-run" ]; then
+                dry_run=1
+            else
+                cc_args+=("$arg")
+            fi
         fi
     done
-    set -- "${new_args[@]}"
+
+    set -- "${cc_args[@]}"
 
     local command="${1:-}"
 
