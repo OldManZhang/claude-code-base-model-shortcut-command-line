@@ -141,8 +141,40 @@ cc kimi:kimi-for-coding
 - `providers` - 定义 API 提供商，每个 provider 包含：
   - `base_url`: API 端点地址
   - `api_key`: API 密钥
-  - `models`: 该 provider 支持的模型，key 是 model ID，value 包含 `enable` 属性
+  - `extra_env` (可选): 该 provider 下所有模型共享的额外环境变量（见下文）
+  - `models`: 该 provider 支持的模型，key 是 model ID，value 包含 `enable` 属性，可选 `extra_env`
 - `default` - 设置默认 provider:model，格式为 `provider:model` 字符串
+
+### 额外环境变量 (extra_env)
+
+如果某个 provider 或 model 需要设置 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_MODEL` 之外的额外环境变量（例如 MiniMax-M3 需要的 `CLAUDE_CODE_AUTO_COMPACT_WINDOW=512000`），可以在 `extra_env` 子对象中声明：
+
+- **provider 级** (`providers[name].extra_env`)：对该 provider 下所有 model 生效
+- **model 级** (`providers[name].models[name].extra_env`)：只对该 model 生效，**同名 key 覆盖 provider 级**
+
+```json
+"minimax": {
+  "base_url": "https://api.minimaxi.com/anthropic",
+  "api_key": "your-minimax-api-key",
+  "extra_env": {
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2.5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "MiniMax-M2.5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "MiniMax-M2.5"
+  },
+  "models": {
+    "MiniMax-M2.5":           { "enable": true },
+    "MiniMax-M2.5-highspeed": { "enable": true },
+    "MiniMax-M3": {
+      "enable": true,
+      "extra_env": {
+        "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "512000"
+      }
+    }
+  }
+}
+```
+
+`cc minimax:MiniMax-M3` 启动 claude 时会自动注入上述所有 `extra_env` 键作为环境变量。
 
 
 
@@ -169,6 +201,7 @@ export CC_PATH="/path/to/your/configs"
    "myprovider": {
      "base_url": "https://api.myprovider.com/anthropic",
      "api_key": "your-api-key",
+     "extra_env": {},
      "models": {
        "my-model": { "enable": true }
      }
@@ -178,6 +211,8 @@ export CC_PATH="/path/to/your/configs"
    ```bash
    cc myprovider:my-model
    ```
+
+如果新模型需要额外环境变量，给该 model 加 `extra_env` 子对象（见上文）。
 
 ## 环境变量参考
 

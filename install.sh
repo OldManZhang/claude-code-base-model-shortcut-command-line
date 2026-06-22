@@ -72,6 +72,10 @@ else
     chmod +x "$TEMP_DIR/bin/cc"
     done_msg "cc 主程序下载完成"
 
+    doing "下载版本号文件"
+    curl -fsSL "$REPO_URL/VERSION" -o "$TEMP_DIR/VERSION" 2>/dev/null || true
+    done_msg "已下载 VERSION"
+
     doing "下载配置文件模板"
     curl -fsSL "$REPO_URL/models.config.example" -o "$TEMP_DIR/models.config.example" 2>/dev/null || true
     done_msg "已下载 models.config.example"
@@ -93,6 +97,12 @@ fi
 cp "$CC_REPO_DIR/bin/cc" "$INSTALL_DIR/cc"
 chmod +x "$INSTALL_DIR/cc"
 done_msg "已安装到: $INSTALL_DIR/cc"
+
+# Copy VERSION alongside cc so `cc --version` works without dev checkout.
+if [ -f "$CC_REPO_DIR/VERSION" ]; then
+    cp "$CC_REPO_DIR/VERSION" "$INSTALL_DIR/VERSION"
+    done_msg "已安装 VERSION: $INSTALL_DIR/VERSION"
+fi
 
 # Step 3: Setup configuration
 step "步骤 3/4: 配置初始化"
