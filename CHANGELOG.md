@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [v0.2.4] - 2026-06-22
+
+### Added
+
 - `extra_env` 机制：provider 级与 model 级自定义环境变量合并，model 级覆盖 provider 级同名 key
 - `cc --version` / `cc version` 命令，输出当前 cc 版本号
 - `MiniMax-M3` 模型 + `CLAUDE_CODE_AUTO_COMPACT_WINDOW=512000` 配置
