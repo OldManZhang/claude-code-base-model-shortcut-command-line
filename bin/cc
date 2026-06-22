@@ -207,6 +207,7 @@ show_current() {
     echo "Environment variables:"
     echo "  CC_PATH=${CC_PATH:-<not set>}"
     echo "  LLM_PROVIDER=${LLM_PROVIDER:-<not set>}"
+    echo "  ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-<not set>}"
     echo
 
     if has_models_config; then
@@ -226,6 +227,24 @@ show_current() {
             echo "Configuration:"
             echo "  base_url: $base_url"
             echo "  api_key: ****"
+
+            # Provider-level extra_env
+            while IFS=$'\t' read -r key value; do
+                [ -z "$key" ] && continue
+                echo "  extra_env (provider): $key=$value"
+            done < <(jq -r --arg p "$LLM_PROVIDER" \
+                '.providers[$p].extra_env // {} | to_entries[] | [.key, (.value|tostring)] | @tsv' \
+                "$MODELS_CONFIG" 2>/dev/null)
+
+            # Model-level extra_env (if a model is currently selected)
+            if [ -n "$ANTHROPIC_MODEL" ] && model_exists "$LLM_PROVIDER" "$ANTHROPIC_MODEL"; then
+                while IFS=$'\t' read -r key value; do
+                    [ -z "$key" ] && continue
+                    echo "  extra_env (model): $key=$value"
+                done < <(jq -r --arg p "$LLM_PROVIDER" --arg m "$ANTHROPIC_MODEL" \
+                    '.providers[$p].models[$m].extra_env // {} | to_entries[] | [.key, (.value|tostring)] | @tsv' \
+                    "$MODELS_CONFIG" 2>/dev/null)
+            fi
         else
             local config_file="$CONFIGS_DIR/env.$LLM_PROVIDER"
             if [ -f "$config_file" ]; then
@@ -306,6 +325,17 @@ load_config() {
         export ANTHROPIC_AUTH_TOKEN="$api_key"
         export ANTHROPIC_MODEL="$model"
 
+        # Merge provider-level + model-level extra_env (model overrides provider),
+        # then eval the resulting `export KEY=VALUE` statements. jq's @sh
+        # quoting keeps values safe even when they contain spaces / quotes / $.
+        eval "$(jq -r \
+            --arg p "$provider" --arg m "$model" \
+            '(.providers[$p].extra_env // {}) +
+             (.providers[$p].models[$m].extra_env // {}) |
+             to_entries | .[] |
+             "export " + (.key | @sh) + "=" + (.value | @sh)' \
+            "$MODELS_CONFIG" 2>/dev/null)"
+
         print_success "Configuration loaded for $provider"
         print_info "Model: $model"
 
@@ -315,6 +345,17 @@ load_config() {
             echo "  ANTHROPIC_BASE_URL=$base_url"
             echo "  ANTHROPIC_AUTH_TOKEN=****"
             echo "  ANTHROPIC_MODEL=$model"
+
+            # Print merged extra_env entries (provider + model, model wins)
+            while IFS=$'\t' read -r key value; do
+                [ -z "$key" ] && continue
+                echo "  $key=$value"
+            done < <(jq -r --arg p "$provider" --arg m "$model" \
+                '(.providers[$p].extra_env // {}) +
+                 (.providers[$p].models[$m].extra_env // {}) |
+                 to_entries[] | [.key, (.value|tostring)] | @tsv' \
+                "$MODELS_CONFIG" 2>/dev/null)
+
             exit 0
         fi
 
@@ -397,10 +438,12 @@ show_usage() {
     echo "  <provider>:<model> Use specific model (e.g., kimi:kimi-for-coding)"
     echo "  list, ls           List all available configurations"
     echo "  current            Show current configuration"
+    echo "  version            Print cc version"
     echo "  help, -h, --help   Show this help message"
     echo
     echo "Options:"
     echo "  --dry-run           Validate configuration without starting Claude"
+    echo "  --version           Print cc version and exit"
     echo
     echo "Separator:"
     echo "  --                  Separates cc args from claude arguments"
@@ -419,10 +462,41 @@ show_usage() {
     echo "  cc kimi:kimi-for-coding     Start interactive Claude session"
     echo "  cc kimi:kimi-for-coding -- --print 'hello'  Pass args to Claude"
     echo "  cc --dry-run kimi:kimi-for-coding  Validate without starting Claude"
+    echo "  cc --version                Print cc version"
     echo "  cc list                     List all providers and models"
 }
 
+# Resolve cc's own directory (follow symlinks) and look up VERSION.
+# Lookup order: script dir, ../VERSION (handles bin/cc layout), ~/.cc/VERSION.
+get_version() {
+    local _cc_self="${BASH_SOURCE[0]:-$0}"
+    [ -L "$_cc_self" ] && _cc_self="$(readlink "$_cc_self" 2>/dev/null || echo "$_cc_self")"
+    local _cc_dir
+    _cc_dir="$(cd "$(dirname "$_cc_self")" 2>/dev/null && pwd)"
+
+    local _v
+    for _v in "$_cc_dir/VERSION" "$_cc_dir/../VERSION" "$HOME/.cc/VERSION"; do
+        if [ -f "$_v" ]; then
+            tr -d '[:space:]' < "$_v"
+            return 0
+        fi
+    done
+    echo "unknown"
+}
+
+show_version() {
+    echo "cc version $(get_version)"
+}
+
 main() {
+    # Handle --version before anything else: no jq, no config loading.
+    for arg in "$@"; do
+        if [ "$arg" = "--version" ]; then
+            show_version
+            exit 0
+        fi
+    done
+
     # Check for jq first
     check_jq
 
@@ -463,6 +537,10 @@ main() {
             ;;
         current)
             show_current
+            exit 0
+            ;;
+        version)
+            show_version
             exit 0
             ;;
         "")

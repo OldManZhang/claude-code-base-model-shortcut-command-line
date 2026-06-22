@@ -3,7 +3,16 @@
 # 使用方式: ./cc_test_cases.sh
 
 CC="./bin/cc"
-export CC_PATH="$(pwd)/.cc.dev"
+CC_PATH="$(pwd)/.cc.dev"
+
+# Bootstrap CC_PATH from models.config.example if it doesn't exist.
+# Lets the suite run in CI where .cc.dev/ is gitignored and absent.
+if [ ! -f "$CC_PATH/models.config" ]; then
+    mkdir -p "$CC_PATH"
+    cp models.config.example "$CC_PATH/models.config"
+fi
+
+export CC_PATH
 
 echo "=========================================="
 echo "cc 工具测试用例"
@@ -69,7 +78,7 @@ test_case "指定有效的 provider:model (--dry-run)" \
     "no"
 
 test_case "指定 minimax:model (--dry-run)" \
-    "$CC --dry-run minimax:MiniMax-M2.7-highspeed" \
+    "$CC --dry-run minimax:MiniMax-M3" \
     "no"
 
 test_case "列出所有配置" \
@@ -156,6 +165,16 @@ test_case "查看帮助" \
 
 test_case "查看帮助 (短选项)" \
     "$CC -h" \
+    "no"
+
+echo "========== 版本命令 =========="
+
+test_case "查看版本 (--version)" \
+    "$CC --version" \
+    "no"
+
+test_case "查看版本 (version)" \
+    "$CC version" \
     "no"
 
 # ==========================================

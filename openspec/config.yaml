@@ -1,0 +1,63 @@
+context: |
+  ## Purpose
+
+  Claude Command Line Manager (`cc`) — 一个轻量级 shell 脚本工具，
+  允许在不同的 LLM provider 之间切换使用 Claude CLI。该工具读取 JSON
+  配置并自动使用选定的配置启动 Claude CLI。
+
+  ## Tech Stack
+
+  - 语言: 纯 Bash shell 脚本（~480 行 `bin/cc`）
+  - 外部依赖: `jq`（必需）；其他都是标准 Unix 工具
+  - 配置: `~/.cc/models.config` JSON 文件
+
+  ## Project Conventions
+
+  ### Code Style
+
+  - 兼容 POSIX / bash 4+；用 `[[ ... ]]`、`$( ... )`、`local`
+  - `set -e` 错误处理
+  - 函数命名使用下划线分隔 (snake_case)
+  - 常量大写，local 变量小写加 `local` 前缀
+  - 唯一一处 `eval` 操作 `jq @sh` 输出；不要新增 `eval`
+
+  ### Architecture Patterns
+
+  - **单一 JSON 配置** — 一个文件 `~/.cc/models.config` 存放所有 providers、
+    models，以及 provider 级 / model 级 `extra_env`
+  - **环境变量委托** — 每个 provider 导出三个 `ANTHROPIC_*` 变量供 Claude CLI
+    使用，加上任意用户配置的 `extra_env` 键（provider 级 + model 级合并，
+    model 级覆盖 provider 级同名 key）
+  - **子进程启动** — `claude` 作为子进程继承导出的环境变量
+  - **向后兼容** — 旧 `~/.cc/configs/env.<provider>` 文件依然通过
+    `load_config()` 的 `elif` 分支 `source` 支持
+
+  ### Testing Strategy
+
+  - 直接跑 `./tests/cc_test_cases.sh`（集成测试）
+  - Bash 语法：`bash -n bin/cc install.sh scripts/release.sh`
+  - JSON 语法：`jq empty models.config.example`
+  - 配置验证：`cc --dry-run <provider>:<model>`
+  - CI 在 PR 和 push 到 main 时跑上述检查
+
+  ### Git Workflow
+
+  详细见 [docs/DEVELOPMENT.md](../../docs/DEVELOPMENT.md)。要点：
+
+  - 单一分支 `main`；长命分支用 `feat/<name>`
+  - Conventional Commits（feat / fix / refactor / docs / chore / release）
+  - 中文描述
+  - 不提交敏感文件（API key、`.env`）
+
+  ## Important Constraints
+
+  - 无外部运行时依赖（除 `jq`）
+  - 环境变量仅在启动的 `claude` 子进程中有效
+  - 需要单独安装 Claude CLI（`cc` 只负责切换配置）
+  - 当前项目处于 `0.x` 版本，API 仍可能变化
+
+  ## External Dependencies
+
+  - `jq`（运行时必需；`brew install jq` / `apt install jq`）
+  - Claude CLI（`claude` 命令）
+  - 标准 Unix 工具（bash 4+、git）
