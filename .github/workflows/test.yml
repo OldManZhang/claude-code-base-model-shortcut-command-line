@@ -1,0 +1,43 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Bash + tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Bash syntax check (bin/cc)
+        run: bash -n bin/cc
+
+      - name: Bash syntax check (install.sh)
+        run: bash -n install.sh
+
+      - name: Bash syntax check (scripts/release.sh)
+        run: bash -n scripts/release.sh
+
+      - name: Validate JSON configs
+        run: |
+          jq empty models.config.example
+
+      - name: Run test suite
+        run: ./tests/cc_test_cases.sh
+
+      - name: Verify cc --version
+        run: |
+          export PATH="$(pwd)/bin:$PATH"
+          version=$(./bin/cc --version | awk '{print $3}')
+          expected=$(cat VERSION | tr -d '[:space:]')
+          [ "$version" = "$expected" ] || { echo "version mismatch: got '$version', expected '$expected'"; exit 1; }
