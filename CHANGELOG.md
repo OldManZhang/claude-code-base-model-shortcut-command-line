@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `extra_env` 机制：provider 级与 model 级自定义环境变量合并，model 级覆盖 provider 级同名 key
+- `cc --version` / `cc version` 命令，输出当前 cc 版本号
+- `MiniMax-M3` 模型 + `CLAUDE_CODE_AUTO_COMPACT_WINDOW=512000` 配置
+- `scripts/release.sh` 一键发版脚本（自动 bump VERSION + 重排 CHANGELOG + commit + tag）
+- GitHub Actions CI：bash 语法 + JSON 语法 + 集成测试 + VERSION 一致性
+- `.github/PULL_REQUEST_TEMPLATE.md` PR 模板
+- `docs/DEVELOPMENT.md` 与 `docs/RELEASE.md` 拆分流程文档
+
+### Changed
+
+- `show_current()` 显示 provider / model 级 `extra_env`
+- `cc --dry-run` 输出包含 `extra_env` 条目
+- `install.sh` 在本地与 `curl|sh` 两种模式下都拷贝 `VERSION`
+- `openspec/config.yaml` 与 `openspec/specs/configuration/spec.md` 同步到 JSON 架构 + `extra_env` 模型
+
 ## [v0.2.3] - 2026-04-20
 
 ### Added
