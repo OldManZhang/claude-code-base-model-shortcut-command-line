@@ -1,87 +1,141 @@
 # configuration Specification
 
 ## Purpose
-TBD - created by archiving change add-cc-path-config. Update Purpose after archive.
+
+`cc` SHALL read a single JSON config file holding all LLM providers, their models, and per-provider / per-model environment overrides, and SHALL apply them when launching the Claude CLI.
+
 ## Requirements
-### Requirement: CC_PATH 环境变量支持
-工具 SHALL 支持通过 CC_PATH 环境变量指定自定义配置目录。
 
-#### Scenario: 使用自定义配置目录
-- **WHEN** 用户设置 `CC_PATH` 环境变量并运行 `cc` 命令
-- **THEN** 工具 SHALL 从 `$CC_PATH` 目录加载配置文件
+### Requirement: Config File Location
 
-#### Scenario: 使用默认配置目录
-- **WHEN** 用户未设置 `CC_PATH` 环境变量并运行 `cc` 命令
-- **THEN** 工具 SHALL 从 `~/.cc/configs` 目录加载配置文件
+`cc` SHALL read `${CC_PATH}/models.config`, where `CC_PATH` defaults to `~/.cc`.
 
-#### Scenario: 显示 CC_PATH 状态
-- **WHEN** 用户运行 `cc list` 或 `cc current` 命令
-- **THEN** 工具 SHALL 显示当前 CC_PATH 的值（已设置的值或 `<default>`）
+#### Scenario: CC_PATH not set
+- **WHEN** user runs `cc` without `CC_PATH` exported
+- **THEN** `cc` reads from `~/.cc/models.config`
 
-### Requirement: Shell 配置文件格式
+#### Scenario: CC_PATH set to custom directory
+- **WHEN** user has `CC_PATH=/some/dir` exported and runs `cc`
+- **THEN** `cc` reads from `/some/dir/models.config`
 
-cc 工具 SHALL 从 `~/.cc/models.config` 文件读取 providers 和 models 配置。
+#### Scenario: Config file missing
+- **WHEN** `${CC_PATH}/models.config` does not exist
+- **THEN** `cc` falls back to legacy `${CC_PATH}/configs/env.<provider>` files if present
+- **AND** if neither exists, `cc` reports an error and exits non-zero
 
-#### Scenario: 加载配置文件
-- **WHEN** cc 工具启动且 `~/.cc/models.config` 存在
-- **THEN** 解析 Shell 格式文件并加载 providers 和 models 配置
+### Requirement: Config File Format
 
-### Requirement: Provider 配置
+The config SHALL be a JSON document with the schema:
 
-配置文件的 `providers` 部分 SHALL 包含每个 provider 的：
-- `base_url`: API 端点地址
-- `api_key`: API 密钥
-- `default_model`: 默认使用的模型
+```json
+{
+  "providers": {
+    "<name>": {
+      "base_url": "<string>",
+      "api_key": "<string>",
+      "extra_env": { "<KEY>": "<VALUE>", ... },
+      "models": {
+        "<model>": {
+          "enable": <boolean>,
+          "extra_env": { "<KEY>": "<VALUE>", ... }
+        }
+      }
+    }
+  },
+  "default": "<provider>:<model>"
+}
+```
 
-#### Scenario: Provider 配置完整
-- **WHEN** provider 配置包含 base_url, api_key, default_model
-- **THEN** 使用该 provider 的默认模型启动 Claude
+#### Scenario: Valid JSON
+- **WHEN** the config file parses as valid JSON
+- **THEN** `cc` proceeds with config loading
 
-### Requirement: Model 配置
+#### Scenario: Malformed JSON
+- **WHEN** the config file is not valid JSON
+- **THEN** `jq` emits an error and `cc` exits non-zero
 
-配置文件的 `models` 部分 SHALL 支持：
-- 直接模型配置：指定 `provider` 属性
-- 别名配置：指定 `target` 属性指向另一个模型
-- **额外环境变量**：除了 `provider` 和 `id` 之外，可以添加任意 `ANTHROPIC_` 开头的环境变量
+### Requirement: Provider Schema
 
-#### Scenario: 直接模型
-- **WHEN** model 配置指定了 `provider` 属性
-- **THEN** 使用该 provider 和模型启动 Claude
+A provider entry SHALL contain `base_url` and `api_key`.
 
-#### Scenario: 模型别名
-- **WHEN** model 配置指定了 `target` 属性
-- **THEN** 解析 target 指向的实际模型，然后启动 Claude
+#### Scenario: Provider complete
+- **WHEN** `providers[name].base_url` and `providers[name].api_key` are both set
+- **THEN** `cc` exports them as `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` respectively
 
-#### Scenario: 模型额外环境变量
-- **WHEN** model 配置中包含 `ANTHROPIC_` 开头的额外字段
-- **THEN** 在启动 Claude 前，将这些额外字段导出为环境变量
-- **AND** 额外环境变量的优先级高于 provider 级别的环境变量
+#### Scenario: Provider missing base_url
+- **WHEN** a provider entry lacks `base_url` or `api_key`
+- **THEN** `cc` reports "Provider '<name>' not found" and exits non-zero
 
-#### Scenario: MiniMax 默认模型配置
-- **WHEN** 用户配置了 MiniMax 模型，并设置了 `ANTHROPIC_DEFAULT_OPUS_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_DEFAULT_HAIKU_MODEL`
-- **THEN** 这些变量在 cc 启动 Claude 时被正确导出
+### Requirement: Model Schema
 
-### Requirement: 命令行语法
+A model entry SHALL contain `enable` (boolean). `extra_env` is optional.
 
-cc 工具 SHALL 支持以下命令行语法：
+#### Scenario: Model enabled
+- **WHEN** `providers[name].models[model].enable` is `true`
+- **THEN** `cc` accepts `<provider>:<model>` and exports `ANTHROPIC_MODEL=<model>`
 
-#### Scenario: Provider 语法
-- **WHEN** 用户运行 `cc <provider>`
-- **THEN** 使用该 provider 的默认模型启动 Claude
+#### Scenario: Model disabled
+- **WHEN** `providers[name].models[model].enable` is `false`
+- **THEN** `cc` still validates `<provider>:<model>` exists in the list, but `cc list` marks it `(disabled)`
 
-#### Scenario: Provider:Model 语法
-- **WHEN** 用户运行 `cc <provider>:<model>`
-- **THEN** 使用指定 provider 的指定模型启动 Claude
+#### Scenario: Model not found
+- **WHEN** user runs `cc <provider>:<model>` and `<model>` is not in `providers[name].models`
+- **THEN** `cc` reports "Model '<model>' not found under provider '<provider>'", lists available models, and exits non-zero
 
-#### Scenario: Alias 语法
-- **WHEN** 用户运行 `cc <alias>`（非 provider 名称）
-- **THEN** 查找 alias 指向的模型并启动 Claude
+### Requirement: extra_env Merging
 
-### Requirement: 向后兼容
+`cc` SHALL merge `providers[name].extra_env` and `providers[name].models[model].extra_env` at load time, with **model-level winning on key collision**. The merged keys SHALL be exported to the spawned `claude` subprocess.
 
-cc 工具 SHALL 保持与旧配置文件的兼容。
+#### Scenario: Provider-only extra_env
+- **WHEN** a provider has `extra_env` but the chosen model has none
+- **THEN** only the provider-level keys are exported
 
-#### Scenario: 旧配置文件存在
-- **WHEN** `~/.cc/models.config` 不存在但 `~/.cc/configs/env.*` 存在
-- **THEN** 使用旧的配置文件方式加载配置
+#### Scenario: Model-only extra_env
+- **WHEN** a model has `extra_env` but its provider has none
+- **THEN** only the model-level keys are exported
 
+#### Scenario: Same key in both levels
+- **WHEN** both provider and model define `extra_env.MY_VAR`
+- **THEN** the model-level value takes precedence; provider-level value is shadowed
+
+#### Scenario: extra_env absent at both levels
+- **WHEN** neither provider nor model has an `extra_env` field
+- **THEN** no additional env vars beyond `ANTHROPIC_*` are exported (no error)
+
+#### Scenario: Non-scalar extra_env value
+- **WHEN** an `extra_env` value is an object or array rather than string / number / boolean
+- **THEN** the implementation MAY skip it (current behavior is silent skip via `jq`'s `@sh` on the merged map)
+
+### Requirement: Default Provider:Model
+
+The top-level `default` field SHALL specify the provider:model used when `cc` is invoked with no arguments.
+
+#### Scenario: Default set
+- **WHEN** the config has `default` and user runs `cc` with no args
+- **THEN** `cc` loads that provider:model
+
+#### Scenario: Default missing
+- **WHEN** the config has no `default` field and user runs `cc` with no args
+- **THEN** `cc` reports an error and exits non-zero
+
+### Requirement: Backward Compatibility with env.* Files
+
+If `${CC_PATH}/models.config` does not exist but `${CC_PATH}/configs/env.<provider>` does, `cc` SHALL source that file to load environment variables.
+
+#### Scenario: Legacy env.* file present
+- **WHEN** `~/.cc/models.config` does not exist but `~/.cc/configs/env.kimi` exists
+- **AND** user runs `cc kimi:kimi-for-coding`
+- **THEN** `cc` sources `env.kimi` and exports `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` from it
+- **AND** sets `ANTHROPIC_MODEL=kimi-for-coding`
+
+This branch is for back-compat only; new installs use the JSON form.
+
+### Requirement: jq as the Only External Dependency
+
+`cc` SHALL use `jq` for all JSON parsing.
+
+#### Scenario: jq missing
+- **WHEN** `jq` is not installed and user runs `cc`
+- **THEN** `cc` prints install instructions and exits non-zero
+
+The only `eval` call in `cc` operates on `jq @sh` output to safely construct shell `export` statements. No other `eval` SHALL be added.
