@@ -47,7 +47,7 @@ REPO_URL="https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-s
 
 ### 步骤
 
-1. 确认 `[Unreleased]` 段已更新（用户可见改动都在里面）
+1. **确认 `[Unreleased]` 段非空** — 打开 `CHANGELOG.md`，确认 `[Unreleased]` 下的 Added / Changed / Fixed 有实际条目。如果为空，先补上再继续。
 2. 在 `main` 分支、clean tree 下运行 `./scripts/release.sh X.Y.Z`
 3. 脚本自动：
    - 把 `[Unreleased]` 内容移到 `## [vX.Y.Z] - <today>` 段
@@ -55,14 +55,22 @@ REPO_URL="https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-s
    - 写 `VERSION`
    - commit `VERSION` + `CHANGELOG.md`
    - 打 annotated tag `vX.Y.Z`
-4. 检查输出，确认 commit 和 tag 已建
-5. **手动** push：
+4. **检查 CHANGELOG** — 读一下刚生成的 `[vX.Y.Z]` 节，确认 Added / Changed / Fixed 内容完整、格式正确。如果发现 `[Unreleased]` 是空的导致新节也为空，手动补上（参考 `git log --oneline` 确认改动）。
+5. 检查输出，确认 commit 和 tag 已建
+6. **手动** push（如果第 4 步有改动 CHANGELOG，先 commit 再 push）：
 
+   ```bash
+   git add CHANGELOG.md    # 如果第 4 步有修改
+   git commit -m "docs: 补充 vX.Y.Z CHANGELOG 条目"
+   git push origin main --tags
+   ```
+
+   如果没改动，直接 push：
    ```bash
    git push origin main --tags
    ```
 
-6. 在 GitHub 上确认 release（可选）：去 Releases 页 → Draft a new release → 选刚 push 的 tag
+7. 在 GitHub 上确认 release（可选）：去 Releases 页 → Draft a new release → 选刚 push 的 tag
 
 ### 发版后用户怎么拿到
 
