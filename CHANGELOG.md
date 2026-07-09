@@ -17,9 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `model_name` 字段：模型配置新增可选 `model_name`，解耦 CLI 调用名与实际 API 模型名
+- 支持模型 key 中含 shell glob 字符（如 `[1m]`）的 provider（DeepSeek、小米），CLI 调用无需引号包裹
+
 ### Changed
 
+- `load_config()` 导出 `ANTHROPIC_MODEL` 时优先使用 `model_name`，不存在则回退 key 名
+- `~/.cc/models.config` 中带 `[1m]` 的模型名迁移到 `model_name` 字段
+
 ### Fixed
+
+- 修复 zsh 下 `cc provider:model[1m]` 报 `no matches found` 的问题
 
 ## [v0.2.4] - 2026-06-22
 
