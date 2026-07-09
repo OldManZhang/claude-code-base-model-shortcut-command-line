@@ -42,6 +42,27 @@
           "extra_env": {
             "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "512000"
           }
+        },
+        "MiniMax-M3-API": {
+          "enable": true,
+          "model_name": "MiniMax-M3",
+          "extra_env": {
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "512000"
+          }
+        }
+      }
+    },
+    "deepseek": {
+      "base_url": "https://api.deepseek.com/anthropic",
+      "api_key": "your-deepseek-api-key",
+      "models": {
+        "deepseek-v4-flash": {
+          "enable": true,
+          "model_name": "deepseek-v4-flash[1m]"
+        },
+        "deepseek-v4-pro": {
+          "enable": true,
+          "model_name": "deepseek-v4-pro[1m]"
         }
       }
     }

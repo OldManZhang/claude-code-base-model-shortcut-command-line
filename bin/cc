@@ -321,9 +321,14 @@ load_config() {
             exit 1
         fi
 
+        # Read model_name — actual model name sent to the API, may differ from the key
+        local model_name=$(jq -r --arg p "$provider" --arg m "$model" \
+            '.providers[$p].models[$m].model_name // empty' \
+            "$MODELS_CONFIG" 2>/dev/null)
+
         export ANTHROPIC_BASE_URL="$base_url"
         export ANTHROPIC_AUTH_TOKEN="$api_key"
-        export ANTHROPIC_MODEL="$model"
+        export ANTHROPIC_MODEL="${model_name:-$model}"
 
         # Merge provider-level + model-level extra_env (model overrides provider),
         # then eval the resulting `export KEY=VALUE` statements. jq's @sh
@@ -344,7 +349,8 @@ load_config() {
             echo "DRY-RUN: Configuration would be:"
             echo "  ANTHROPIC_BASE_URL=$base_url"
             echo "  ANTHROPIC_AUTH_TOKEN=****"
-            echo "  ANTHROPIC_MODEL=$model"
+            echo "  ANTHROPIC_MODEL=${model_name:-$model}"
+            [ -n "$model_name" ] && echo "  (model key: $model → model_name: $model_name)"
 
             # Print merged extra_env entries (provider + model, model wins)
             while IFS=$'\t' read -r key value; do

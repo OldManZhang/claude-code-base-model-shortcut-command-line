@@ -86,6 +86,24 @@ test_case "列出所有配置" \
     "no"
 
 # ==========================================
+# model_name 字段测试 (使用 --dry-run)
+# ==========================================
+
+echo "========== model_name 字段测试 (--dry-run) =========="
+
+test_case "带 model_name 的模型导出正确的 ANTHROPIC_MODEL 值" \
+    "$CC --dry-run minimax:MiniMax-M3-model-name-test 2>&1 | grep -qF 'ANTHROPIC_MODEL=MiniMax-M3[1m]'" \
+    "no"
+
+test_case "带 model_name 的模型显示映射提示" \
+    "$CC --dry-run minimax:MiniMax-M3-model-name-test 2>&1 | grep -q 'model_key.*model_name'" \
+    "no"
+
+test_case "无 model_name 的模型使用 key 作为模型名" \
+    "$CC --dry-run kimi:kimi-for-coding 2>&1 | grep -qF 'ANTHROPIC_MODEL=kimi-for-coding'" \
+    "no"
+
+# ==========================================
 # 错误场景 - 格式错误
 # ==========================================
 

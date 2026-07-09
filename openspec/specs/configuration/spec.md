@@ -68,7 +68,7 @@ A provider entry SHALL contain `base_url` and `api_key`.
 
 ### Requirement: Model Schema
 
-A model entry SHALL contain `enable` (boolean). `extra_env` is optional.
+A model entry SHALL contain `enable` (boolean). `extra_env` and `model_name` are optional.
 
 #### Scenario: Model enabled
 - **WHEN** `providers[name].models[model].enable` is `true`
@@ -81,6 +81,14 @@ A model entry SHALL contain `enable` (boolean). `extra_env` is optional.
 #### Scenario: Model not found
 - **WHEN** user runs `cc <provider>:<model>` and `<model>` is not in `providers[name].models`
 - **THEN** `cc` reports "Model '<model>' not found under provider '<provider>'", lists available models, and exits non-zero
+
+#### Scenario: Model with model_name
+- **WHEN** `providers[name].models[model].model_name` is set to a non-empty string
+- **THEN** `cc` SHALL export `ANTHROPIC_MODEL=<model_name_value>` instead of `<model>`
+
+#### Scenario: Model without model_name
+- **WHEN** a model entry has no `model_name` field, or it is empty
+- **THEN** `cc` SHALL export `ANTHROPIC_MODEL=<model>` (the config key)
 
 ### Requirement: extra_env Merging
 
