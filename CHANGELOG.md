@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [v0.2.6] - 2026-10-07
+
+### Added
+
 - `anthropic_auth_token` / `anthropic_api_key` 字段：provider 级认证方式二选一，字段名即导出的环境变量名，支持 opencode 等读取 `ANTHROPIC_API_KEY` 的工具（如 opencode Go 套餐）
 - 顶层 `config_version` 字段标记配置 schema 版本
 - dry-run / `cc current` 输出 `(auth: token|api_key)` 认证标识
