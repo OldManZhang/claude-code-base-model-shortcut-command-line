@@ -14,6 +14,7 @@
 
 ```bash
 # 一键安装
+# （脚本会自动把 export PATH="$HOME/.local/bin:$PATH" 写入 ~/.zshrc，已存在则跳过）
 curl -fsSL https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-shortcut-command-line/main/install.sh | sh
 
 # 使 PATH 生效
@@ -40,7 +41,8 @@ cc kimi:kimi-for-coding
 curl -fsSL https://raw.githubusercontent.com/OldManZhang/claude-code-base-model-shortcut-command-line/main/install.sh | sh
 ```
 
-安装完成后，运行以下命令使 PATH 生效：
+安装脚本会自动把 `export PATH="$HOME/.local/bin:$PATH"` 追加到 `~/.zshrc`（或 `~/.bashrc`，
+已存在则跳过；若未识别到你的 shell，会提示手动添加这一行）。安装完成后，运行以下命令使其生效：
 
 ```bash
 source ~/.zshrc  # 或 ~/.bashrc
