@@ -29,10 +29,12 @@ The config SHALL be a JSON document with the schema:
 
 ```json
 {
+  "config_version": "<string>",
   "providers": {
     "<name>": {
       "base_url": "<string>",
-      "api_key": "<string>",
+      "anthropic_auth_token": "<string>",
+      "anthropic_api_key": "<string>",
       "extra_env": { "<KEY>": "<VALUE>", ... },
       "models": {
         "<model>": {
@@ -46,6 +48,12 @@ The config SHALL be a JSON document with the schema:
 }
 ```
 
+Each provider SHALL carry its credential in exactly one of `anthropic_auth_token` or
+`anthropic_api_key` (mutually exclusive). The top-level `config_version` field marks the
+schema generation of the file; its value is the cc version string that produced it
+(e.g. `"0.2.5"`). Absence of `config_version` marks a legacy config that triggers
+automatic migration on startup.
+
 #### Scenario: Valid JSON
 - **WHEN** the config file parses as valid JSON
 - **THEN** `cc` proceeds with config loading
@@ -56,15 +64,43 @@ The config SHALL be a JSON document with the schema:
 
 ### Requirement: Provider Schema
 
-A provider entry SHALL contain `base_url` and `api_key`.
+A provider entry SHALL contain `base_url` and exactly one credential field:
+`anthropic_auth_token` (exported as `ANTHROPIC_AUTH_TOKEN`) or
+`anthropic_api_key` (exported as `ANTHROPIC_API_KEY`). The field name matches the
+target environment variable name (lowercase).
 
-#### Scenario: Provider complete
-- **WHEN** `providers[name].base_url` and `providers[name].api_key` are both set
-- **THEN** `cc` exports them as `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` respectively
+#### Scenario: Provider with anthropic_auth_token
+- **WHEN** a provider sets `anthropic_auth_token` (and not `anthropic_api_key`)
+- **THEN** `cc` unsets any pre-existing `ANTHROPIC_API_KEY`, then exports
+  `ANTHROPIC_BASE_URL=<base_url>` and `ANTHROPIC_AUTH_TOKEN=<value>`
+
+#### Scenario: Provider with anthropic_api_key
+- **WHEN** a provider sets `anthropic_api_key` (and not `anthropic_auth_token`)
+- **THEN** `cc` unsets any pre-existing `ANTHROPIC_AUTH_TOKEN`, then exports
+  `ANTHROPIC_BASE_URL=<base_url>` and `ANTHROPIC_API_KEY=<value>`
+
+#### Scenario: Both credential fields set
+- **WHEN** a provider sets both `anthropic_auth_token` and `anthropic_api_key`
+- **THEN** `cc` reports a mutually-exclusive error naming both fields and exits non-zero
+  before exporting anything (including in `--dry-run`)
+
+#### Scenario: No credential field
+- **WHEN** a provider sets neither credential field (or the effective one is empty)
+- **THEN** `cc` reports a missing-credential error naming the accepted fields and exits non-zero
 
 #### Scenario: Provider missing base_url
-- **WHEN** a provider entry lacks `base_url` or `api_key`
-- **THEN** `cc` reports "Provider '<name>' not found" and exits non-zero
+- **WHEN** a provider entry lacks `base_url`
+- **THEN** `cc` reports "Provider '<name>' missing base_url" and exits non-zero
+
+#### Scenario: Pre-existing sibling auth variable
+- **WHEN** the parent shell has `ANTHROPIC_AUTH_TOKEN` (or `ANTHROPIC_API_KEY`) exported
+- **AND** `cc` loads a provider of the other auth kind
+- **THEN** the sibling variable SHALL be unset in the spawned subprocess so the
+  configured credential is the only one in effect
+
+#### Scenario: extra_env still wins
+- **WHEN** a provider or model declares `extra_env` entries touching `ANTHROPIC_*` auth variables
+- **THEN** those entries are exported after the credential export and take precedence
 
 ### Requirement: Model Schema
 

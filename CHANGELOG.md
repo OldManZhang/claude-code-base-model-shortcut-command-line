@@ -9,7 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `anthropic_auth_token` / `anthropic_api_key` 字段：provider 级认证方式二选一，字段名即导出的环境变量名，支持 opencode 等读取 `ANTHROPIC_API_KEY` 的工具（如 opencode Go 套餐）
+- 顶层 `config_version` 字段标记配置 schema 版本
+- dry-run / `cc current` 输出 `(auth: token|api_key)` 认证标识
+
 ### Changed
+
+- 认证导出改为「先 unset 后 export」：`anthropic_api_key` 模式先清除 `ANTHROPIC_AUTH_TOKEN`（claude 见 token 即走 token），token 模式对称清除残留的 `ANTHROPIC_API_KEY`
+- 旧配置（无 `config_version`）启动时自动迁移：备份为 `.bak` 后将 provider 级 `api_key` 改名为 `anthropic_auth_token` 并写入 `config_version`，导出行为保持不变
 
 ### Fixed
 

@@ -26,19 +26,31 @@ cc 工具 SHALL 支持 `--dry-run` 选项。
 #### Scenario: Dry-run 验证配置
 - **WHEN** 用户运行 `cc --dry-run <provider>:<model>`
 - **THEN** 工具 SHALL 验证 provider 和 model 是否存在
-- **AND** 打印将设置的环境变量（ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL）
+- **AND** 按 provider 的认证字段打印将设置的环境变量（ANTHROPIC_BASE_URL、
+  ANTHROPIC_AUTH_TOKEN 或 ANTHROPIC_API_KEY、ANTHROPIC_MODEL）
+- **AND** 打印 `(auth: token)` 或 `(auth: api_key)` 标识所用认证方式
 - **AND** 不启动 claude CLI
 - **AND** 返回 exit code 0
 
-#### Scenario: Dry-run 显示环境变量
-- **WHEN** dry-run 模式验证通过
+#### Scenario: Dry-run 显示环境变量（token 认证）
+- **WHEN** dry-run 模式验证通过且 provider 使用 `anthropic_auth_token`
 - **THEN** 打印以下信息：
   ```
   DRY-RUN: Configuration would be:
   ANTHROPIC_BASE_URL=<value>
   ANTHROPIC_AUTH_TOKEN=<masked>
   ANTHROPIC_MODEL=<value>
+  (auth: token)
   ```
+
+#### Scenario: Dry-run 显示环境变量（api_key 认证）
+- **WHEN** dry-run 模式验证通过且 provider 使用 `anthropic_api_key`
+- **THEN** 打印 `ANTHROPIC_API_KEY=<masked>` 而非 `ANTHROPIC_AUTH_TOKEN` 行，
+  并包含 `(auth: api_key)` 标识
+
+#### Scenario: Dry-run 校验互斥错误
+- **WHEN** provider 同时设置两个认证字段或均未设置
+- **THEN** dry-run SHALL 同样报错并返回非零退出码
 
 ### Requirement: 参数分隔符
 

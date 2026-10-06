@@ -1,34 +1,51 @@
 {
+  "config_version": "0.2.5",
   "providers": {
     "kimi": {
       "base_url": "https://api.moonshot.cn",
-      "api_key": "your-kimi-api-key",
+      "anthropic_auth_token": "your-kimi-api-key",
       "models": {
         "kimi-for-coding": { "enable": true }
       }
     },
     "glm": {
       "base_url": "https://open.bigmodel.cn/api/paas/v4",
-      "api_key": "your-glm-api-key",
+      "anthropic_auth_token": "your-glm-api-key",
       "models": {}
     },
     "openai": {
       "base_url": "https://api.openai.com/v1",
-      "api_key": "your-openai-api-key",
+      "anthropic_auth_token": "your-openai-api-key",
       "models": {
         "gpt-4o": { "enable": true }
       }
     },
     "anthropic": {
       "base_url": "https://api.anthropic.com",
-      "api_key": "your-anthropic-api-key",
+      "anthropic_auth_token": "your-anthropic-api-key",
       "models": {
         "claude-sonnet-4-20250514": { "enable": true }
       }
     },
+    "opencode": {
+      "base_url": "https://opencode.ai/zen/go",
+      "anthropic_api_key": "your-opencode-go-api-key",
+      "extra_env": {
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4.1-flash[1m]",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4.1-flash[1m]",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4.1-flash[1m]",
+        "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-v4.1-flash[1m]"
+      },
+      "models": {
+        "deepseek-v4.1-flash": {
+          "enable": true,
+          "model_name": "deepseek-v4.1-flash[1m]"
+        }
+      }
+    },
     "minimax": {
       "base_url": "https://api.minimaxi.com/anthropic",
-      "api_key": "your-minimax-api-key",
+      "anthropic_auth_token": "your-minimax-api-key",
       "extra_env": {
         "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2.5",
         "ANTHROPIC_DEFAULT_SONNET_MODEL": "MiniMax-M2.5",
@@ -49,12 +66,16 @@
           "extra_env": {
             "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "512000"
           }
+        },
+        "MiniMax-M3-model-name-test": {
+          "enable": true,
+          "model_name": "MiniMax-M3[1m]"
         }
       }
     },
     "deepseek": {
       "base_url": "https://api.deepseek.com/anthropic",
-      "api_key": "your-deepseek-api-key",
+      "anthropic_auth_token": "your-deepseek-api-key",
       "models": {
         "deepseek-v4-flash": {
           "enable": true,

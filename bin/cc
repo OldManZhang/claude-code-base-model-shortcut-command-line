@@ -64,6 +64,19 @@ get_provider_config() {
     jq -r ".providers[\"$provider\"].${field}" "$MODELS_CONFIG" 2>/dev/null | grep -v "^null$" || return 1
 }
 
+# Resolve which credential field a provider uses:
+# prints "anthropic_auth_token" | "anthropic_api_key" | "both" | "none"
+resolve_key_field() {
+    local provider="$1"
+    jq -r --arg p "$provider" '
+        (.providers[$p] | has("anthropic_auth_token")) as $t |
+        (.providers[$p] | has("anthropic_api_key")) as $k |
+        if $t and $k then "both"
+        elif $t then "anthropic_auth_token"
+        elif $k then "anthropic_api_key"
+        else "none" end' "$MODELS_CONFIG" 2>/dev/null
+}
+
 # Check if a provider exists
 is_provider() {
     local name="$1"
@@ -196,6 +209,7 @@ list_configs() {
     echo "Tip: Set env vars to use directly:"
     echo "  export ANTHROPIC_BASE_URL=https://api.example.com"
     echo "  export ANTHROPIC_AUTH_TOKEN=your-api-key"
+    echo "  export ANTHROPIC_API_KEY=your-api-key     # for tools reading the API key (e.g. opencode)"
     echo "  claude  # Run claude directly"
 }
 
@@ -223,10 +237,25 @@ show_current() {
 
         if has_models_config && is_provider "$LLM_PROVIDER"; then
             local base_url=$(get_provider_config "$LLM_PROVIDER" "base_url")
-            local api_key=$(get_provider_config "$LLM_PROVIDER" "api_key")
+            local key_field=$(resolve_key_field "$LLM_PROVIDER")
             echo "Configuration:"
             echo "  base_url: $base_url"
-            echo "  api_key: ****"
+            case "$key_field" in
+                anthropic_auth_token)
+                    echo "  anthropic_auth_token: ****"
+                    echo "  (auth: token)"
+                    ;;
+                anthropic_api_key)
+                    echo "  anthropic_api_key: ****"
+                    echo "  (auth: api_key)"
+                    ;;
+                both)
+                    print_warning "both 'anthropic_auth_token' and 'anthropic_api_key' set (mutually exclusive)"
+                    ;;
+                *)
+                    print_warning "no credential field set ('anthropic_auth_token' or 'anthropic_api_key')"
+                    ;;
+            esac
 
             # Provider-level extra_env
             while IFS=$'\t' read -r key value; do
@@ -264,6 +293,7 @@ show_current() {
     echo "Tip: Set env vars to use directly:"
     echo "  export ANTHROPIC_BASE_URL=https://api.example.com"
     echo "  export ANTHROPIC_AUTH_TOKEN=your-api-key"
+    echo "  export ANTHROPIC_API_KEY=your-api-key     # for tools reading the API key (e.g. opencode)"
     echo "  claude  # Run claude directly"
 }
 
@@ -314,10 +344,28 @@ load_config() {
         fi
 
         local base_url=$(get_provider_config "$provider" "base_url")
-        local api_key=$(get_provider_config "$provider" "api_key")
 
-        if [ -z "$base_url" ] || [ -z "$api_key" ]; then
-            print_error "Provider '$provider' not found in $MODELS_CONFIG"
+        if [ -z "$base_url" ]; then
+            print_error "Provider '$provider' missing base_url in $MODELS_CONFIG"
+            exit 1
+        fi
+
+        # Resolve credential field: exactly one of anthropic_auth_token / anthropic_api_key
+        local key_field=$(resolve_key_field "$provider")
+        case "$key_field" in
+            both)
+                print_error "Provider '$provider' sets both 'anthropic_auth_token' and 'anthropic_api_key' (mutually exclusive)"
+                exit 1
+                ;;
+            none|"")
+                print_error "Provider '$provider' has no credential; set 'anthropic_auth_token' or 'anthropic_api_key' in $MODELS_CONFIG"
+                exit 1
+                ;;
+        esac
+
+        local api_key=$(get_provider_config "$provider" "$key_field")
+        if [ -z "$api_key" ]; then
+            print_error "Provider '$provider' field '$key_field' is empty in $MODELS_CONFIG"
             exit 1
         fi
 
@@ -327,7 +375,18 @@ load_config() {
             "$MODELS_CONFIG" 2>/dev/null)
 
         export ANTHROPIC_BASE_URL="$base_url"
-        export ANTHROPIC_AUTH_TOKEN="$api_key"
+        # Deterministic auth switch: clear the sibling var first — claude prefers
+        # ANTHROPIC_AUTH_TOKEN whenever it is present, so api_key mode must unset it.
+        case "$key_field" in
+            anthropic_auth_token)
+                unset ANTHROPIC_API_KEY
+                export ANTHROPIC_AUTH_TOKEN="$api_key"
+                ;;
+            anthropic_api_key)
+                unset ANTHROPIC_AUTH_TOKEN
+                export ANTHROPIC_API_KEY="$api_key"
+                ;;
+        esac
         export ANTHROPIC_MODEL="${model_name:-$model}"
 
         # Merge provider-level + model-level extra_env (model overrides provider),
@@ -348,9 +407,16 @@ load_config() {
             echo
             echo "DRY-RUN: Configuration would be:"
             echo "  ANTHROPIC_BASE_URL=$base_url"
-            echo "  ANTHROPIC_AUTH_TOKEN=****"
+            case "$key_field" in
+                anthropic_auth_token) echo "  ANTHROPIC_AUTH_TOKEN=****" ;;
+                anthropic_api_key)    echo "  ANTHROPIC_API_KEY=****" ;;
+            esac
             echo "  ANTHROPIC_MODEL=${model_name:-$model}"
             [ -n "$model_name" ] && echo "  (model key: $model → model_name: $model_name)"
+            case "$key_field" in
+                anthropic_auth_token) echo "  (auth: token)" ;;
+                anthropic_api_key)    echo "  (auth: api_key)" ;;
+            esac
 
             # Print merged extra_env entries (provider + model, model wins)
             while IFS=$'\t' read -r key value; do
@@ -461,6 +527,7 @@ show_usage() {
     echo "Tip: You can also use existing env vars directly:"
     echo "  export ANTHROPIC_BASE_URL=https://api.example.com"
     echo "  export ANTHROPIC_AUTH_TOKEN=your-api-key"
+    echo "  export ANTHROPIC_API_KEY=your-api-key     # for tools reading the API key (e.g. opencode)"
     echo "  claude  # Run claude directly with your env vars"
     echo
     echo "Examples:"
@@ -494,6 +561,63 @@ show_version() {
     echo "cc version $(get_version)"
 }
 
+# Upgrade a legacy models.config (no config_version) in place:
+#   - back it up first (models.config.bak, timestamped if that exists)
+#   - rename provider-level api_key -> anthropic_auth_token (legacy meaning: token auth)
+#   - stamp config_version with the cc version performing the migration
+# Detection is presence-based only (never compares version values).
+migrate_models_config() {
+    has_models_config || return 0
+
+    # Not valid JSON: skip and let the normal load path report the error
+    jq empty "$MODELS_CONFIG" 2>/dev/null || return 0
+
+    # Already has config_version: nothing to do (idempotent)
+    [ "$(jq -r 'has("config_version")' "$MODELS_CONFIG" 2>/dev/null)" = "true" ] && return 0
+
+    local cc_ver backup tmp
+    cc_ver="$(get_version)"
+
+    # Refuse to migrate if a provider already carries the new field name
+    local conflict
+    conflict=$(jq -r '.providers // {} | to_entries[]
+        | select(.value | has("api_key") and has("anthropic_auth_token"))
+        | .key' "$MODELS_CONFIG" 2>/dev/null | head -1)
+    if [ -n "$conflict" ]; then
+        print_error "Config migration conflict: provider '$conflict' has both 'api_key' and 'anthropic_auth_token'"
+        print_info "Please resolve manually in $MODELS_CONFIG (keep one credential field), then rerun cc"
+        exit 1
+    fi
+
+    backup="$MODELS_CONFIG.bak"
+    if [ -e "$backup" ]; then
+        backup="$MODELS_CONFIG.bak.$(date +%Y%m%d%H%M%S)"
+    fi
+    if ! cp "$MODELS_CONFIG" "$backup"; then
+        print_error "Config migration failed: cannot create backup at $backup"
+        exit 1
+    fi
+
+    tmp="${MODELS_CONFIG}.tmp.$$"
+    if jq --arg v "$cc_ver" '
+        .config_version = $v |
+        .providers = ((.providers // {}) | with_entries(
+            if (.value | has("api_key")) and ((.value | has("anthropic_auth_token")) | not)
+            then .value |= (.anthropic_auth_token = .api_key | del(.api_key))
+            else . end
+        ))' "$MODELS_CONFIG" > "$tmp" 2>/dev/null \
+        && jq empty "$tmp" 2>/dev/null \
+        && mv "$tmp" "$MODELS_CONFIG"; then
+        print_warning "Legacy config detected; auto-upgraded (backup: $backup)"
+        print_info "api_key -> anthropic_auth_token, config_version: $cc_ver"
+        echo
+    else
+        rm -f "$tmp"
+        print_error "Config migration failed: cannot rewrite $MODELS_CONFIG (original preserved at $backup)"
+        exit 1
+    fi
+}
+
 main() {
     # Handle --version before anything else: no jq, no config loading.
     for arg in "$@"; do
@@ -505,6 +629,9 @@ main() {
 
     # Check for jq first
     check_jq
+
+    # Upgrade legacy models.config (no config_version) before dispatch
+    migrate_models_config
 
     # Parse arguments: separate cc args from claude args using --
     local cc_args=()
