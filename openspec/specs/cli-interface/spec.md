@@ -52,6 +52,18 @@ cc 工具 SHALL 支持 `--dry-run` 选项。
 - **WHEN** provider 同时设置两个认证字段或均未设置
 - **THEN** dry-run SHALL 同样报错并返回非零退出码
 
+### Requirement: 配置自动迁移提示
+
+cc SHALL 在旧版配置被自动升级时向用户输出可见提示。
+
+#### Scenario: 迁移发生时
+- **WHEN** cc 检测到 `models.config` 缺少 `config_version` 并执行迁移
+- **THEN** 输出包含备份路径与 `api_key -> anthropic_auth_token` 变更说明的提示行
+
+#### Scenario: 无需迁移时
+- **WHEN** 配置已包含 `config_version`
+- **THEN** 不输出任何迁移相关提示
+
 ### Requirement: 参数分隔符
 
 cc 工具 SHALL 使用 `--` 分隔符区分 cc 参数和 claude 参数。

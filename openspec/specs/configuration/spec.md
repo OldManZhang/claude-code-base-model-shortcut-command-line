@@ -174,6 +174,36 @@ If `${CC_PATH}/models.config` does not exist but `${CC_PATH}/configs/env.<provid
 
 This branch is for back-compat only; new installs use the JSON form.
 
+### Requirement: Config Migration
+
+`cc` SHALL automatically upgrade a legacy `models.config` that lacks the top-level
+`config_version` field, before dispatching any command (except `--version`).
+
+#### Scenario: Legacy config detected
+- **WHEN** `${CC_PATH}/models.config` is valid JSON and has no `config_version` field
+- **THEN** `cc` backs it up to `models.config.bak` (timestamped suffix if that exists)
+- **AND** renames each provider-level `api_key` field to `anthropic_auth_token`
+- **AND** writes `config_version` with the cc version performing the migration
+- **AND** prints an upgrade notice naming the backup path and the changes
+- **AND** subsequent runs export `ANTHROPIC_AUTH_TOKEN` exactly as before the migration
+
+#### Scenario: Already migrated
+- **WHEN** the config already has `config_version`
+- **THEN** `cc` performs no write (idempotent: no re-rename, no new backup)
+
+#### Scenario: Migration conflict
+- **WHEN** a provider has both legacy `api_key` and `anthropic_auth_token`
+- **THEN** `cc` reports a conflict error, leaves the file untouched, and exits non-zero
+
+#### Scenario: Rewrite failure
+- **WHEN** the backup copy or the jq rewrite fails
+- **THEN** `cc` reports an error, the original file remains in place (no partial write),
+  and `cc` exits non-zero
+
+#### Scenario: Invalid JSON during migration
+- **WHEN** the config file is not valid JSON
+- **THEN** migration is skipped and the normal load path reports the JSON error
+
 ### Requirement: jq as the Only External Dependency
 
 `cc` SHALL use `jq` for all JSON parsing.
